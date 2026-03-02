@@ -72,7 +72,8 @@ public class WorldGenerator {
 
         Chest chest = null;
         if (random.nextDouble() < 0.55) {
-            chest = new Chest(generateLoot());
+            int[] chestPos = randomFloorPosition(tiles);
+            chest = new Chest(chestPos[0], chestPos[1], generateLoot());
         }
 
         return new Room(roomX, roomY, tiles, monster, chest);
@@ -92,5 +93,16 @@ public class WorldGenerator {
             }
         }
         return loot;
+    }
+
+    private int[] randomFloorPosition(TileType[][] tiles) {
+        for (int attempt = 0; attempt < 500; attempt++) {
+            int x = 1 + random.nextInt(Room.WIDTH - 2);
+            int y = 1 + random.nextInt(Room.HEIGHT - 2);
+            if (tiles[y][x] == TileType.FLOOR) {
+                return new int[]{x, y};
+            }
+        }
+        return new int[]{Room.WIDTH / 2, Room.HEIGHT / 2};
     }
 }

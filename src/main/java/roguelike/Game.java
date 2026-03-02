@@ -5,11 +5,13 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.Pixmap;
+import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,17 +29,24 @@ public class Game extends ApplicationAdapter {
     private int playerX = Room.WIDTH / 2;
     private int playerY = Room.HEIGHT / 2;
 
-    private ShapeRenderer shapeRenderer;
     private SpriteBatch batch;
     private BitmapFont font;
 
+    private final Map<TileType, Texture> tileTextures = new EnumMap<>(TileType.class);
+    private Texture playerTexture;
+    private Texture chestClosedTexture;
+    private Texture chestOpenedTexture;
+    private Texture monsterTexture;
+    private Texture panelTexture;
+
     @Override
     public void create() {
-        shapeRenderer = new ShapeRenderer();
         batch = new SpriteBatch();
         font = new BitmapFont();
         font.setColor(Color.WHITE);
-        addLog("libGDX roguelike: WASD/стрелки ходить, F бить, E сундук, Q зелье");
+
+        createTextures();
+        addLog("Рогалик: WASD/стрелки — движение, F — бой, E — сундук, Q — зелье");
     }
 
     @Override
@@ -49,33 +58,45 @@ public class Game extends ApplicationAdapter {
 
         Room room = currentRoom();
 
-        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        batch.begin();
+
         for (int y = 0; y < Room.HEIGHT; y++) {
             for (int x = 0; x < Room.WIDTH; x++) {
-                shapeRenderer.setColor(colorForTile(room.tile(x, y)));
-                shapeRenderer.rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                Texture tileTexture = tileTextures.get(room.tile(x, y));
+                batch.draw(tileTexture, x * TILE_SIZE, y * TILE_SIZE);
             }
         }
 
-        shapeRenderer.setColor(new Color(0.2f, 0.2f, 0.2f, 1f));
-        shapeRenderer.rect(Room.WIDTH * TILE_SIZE + 8, 8, 320, 620);
+        Chest chest = room.chest();
+        if (chest != null) {
+            Texture chestTexture = chest.isOpened() ? chestOpenedTexture : chestClosedTexture;
+            batch.draw(chestTexture, chest.x() * TILE_SIZE, chest.y() * TILE_SIZE);
+        }
 
-        shapeRenderer.setColor(new Color(0.2f, 0.9f, 0.2f, 1f));
-        shapeRenderer.rect(playerX * TILE_SIZE + 2, playerY * TILE_SIZE + 2, TILE_SIZE - 4, TILE_SIZE - 4);
-        shapeRenderer.end();
+        if (room.monster() != null && room.monster().isAlive()) {
+            int monsterX = Room.WIDTH / 2 + 4;
+            int monsterY = Room.HEIGHT / 2 + 3;
+            batch.draw(monsterTexture, monsterX * TILE_SIZE, monsterY * TILE_SIZE);
+        }
 
-        batch.begin();
+        batch.draw(playerTexture, playerX * TILE_SIZE, playerY * TILE_SIZE);
+
+        int panelX = Room.WIDTH * TILE_SIZE + 8;
+        batch.setColor(1f, 1f, 1f, 0.9f);
+        batch.draw(panelTexture, panelX, 8, 320, 620);
+        batch.setColor(Color.WHITE);
+
         int infoX = Room.WIDTH * TILE_SIZE + 16;
         int topY = 610;
 
-        font.draw(batch, "Room: [" + roomX + ", " + roomY + "]", infoX, topY);
-        font.draw(batch, "HP: " + player.health() + "  ATK: " + player.attackPower(), infoX, topY - 24);
+        font.draw(batch, "Комната: [" + roomX + ", " + roomY + "]", infoX, topY);
+        font.draw(batch, "Здоровье: " + player.health() + "  Атака: " + player.attackPower(), infoX, topY - 24);
         if (room.monster() != null && room.monster().isAlive()) {
-            font.draw(batch, "Monster: " + room.monster().name() + " HP " + room.monster().health(), infoX, topY - 48);
+            font.draw(batch, "Монстр: " + room.monster().name() + " HP " + room.monster().health(), infoX, topY - 48);
         } else {
-            font.draw(batch, "Monster: none", infoX, topY - 48);
+            font.draw(batch, "Монстр: нет", infoX, topY - 48);
         }
-        font.draw(batch, "Inventory: " + player.inventory().size(), infoX, topY - 72);
+        font.draw(batch, "Инвентарь: " + player.inventory().size(), infoX, topY - 72);
 
         int lineY = topY - 120;
         for (String s : log) {
@@ -85,13 +106,122 @@ public class Game extends ApplicationAdapter {
         batch.end();
     }
 
-    private Color colorForTile(TileType tile) {
-        return switch (tile) {
-            case FLOOR -> new Color(0.35f, 0.35f, 0.40f, 1f);
-            case WALL -> new Color(0.14f, 0.14f, 0.16f, 1f);
-            case TRAP -> new Color(0.8f, 0.2f, 0.2f, 1f);
-            case DOOR_NORTH, DOOR_EAST, DOOR_SOUTH, DOOR_WEST -> new Color(0.9f, 0.8f, 0.3f, 1f);
-        };
+    private void createTextures() {
+        tileTextures.put(TileType.FLOOR, createTileTexture(new Color(0.32f, 0.32f, 0.36f, 1f), new Color(0.28f, 0.28f, 0.32f, 1f)));
+        tileTextures.put(TileType.WALL, createTileTexture(new Color(0.14f, 0.14f, 0.16f, 1f), new Color(0.18f, 0.18f, 0.2f, 1f)));
+        tileTextures.put(TileType.TRAP, createTrapTexture());
+        Texture doorTexture = createDoorTexture();
+        tileTextures.put(TileType.DOOR_NORTH, doorTexture);
+        tileTextures.put(TileType.DOOR_SOUTH, doorTexture);
+        tileTextures.put(TileType.DOOR_EAST, doorTexture);
+        tileTextures.put(TileType.DOOR_WEST, doorTexture);
+
+        playerTexture = createPlayerTexture();
+        monsterTexture = createMonsterTexture();
+        chestClosedTexture = createChestTexture(false);
+        chestOpenedTexture = createChestTexture(true);
+        panelTexture = createSolidTexture(new Color(0.2f, 0.2f, 0.2f, 1f));
+    }
+
+    private Texture createTileTexture(Color base, Color detail) {
+        Pixmap pixmap = new Pixmap(TILE_SIZE, TILE_SIZE, Pixmap.Format.RGBA8888);
+        pixmap.setColor(base);
+        pixmap.fill();
+
+        pixmap.setColor(detail);
+        for (int y = 0; y < TILE_SIZE; y++) {
+            for (int x = 0; x < TILE_SIZE; x++) {
+                if ((x + y) % 4 == 0) {
+                    pixmap.drawPixel(x, y);
+                }
+            }
+        }
+
+        Texture texture = new Texture(pixmap);
+        pixmap.dispose();
+        return texture;
+    }
+
+    private Texture createTrapTexture() {
+        Pixmap pixmap = new Pixmap(TILE_SIZE, TILE_SIZE, Pixmap.Format.RGBA8888);
+        pixmap.setColor(0.28f, 0.12f, 0.12f, 1f);
+        pixmap.fill();
+        pixmap.setColor(0.86f, 0.2f, 0.2f, 1f);
+        for (int x = 1; x < TILE_SIZE; x += 3) {
+            pixmap.drawLine(x, 0, TILE_SIZE - 1 - x / 2, TILE_SIZE - 1);
+        }
+        Texture texture = new Texture(pixmap);
+        pixmap.dispose();
+        return texture;
+    }
+
+    private Texture createDoorTexture() {
+        Pixmap pixmap = new Pixmap(TILE_SIZE, TILE_SIZE, Pixmap.Format.RGBA8888);
+        pixmap.setColor(0.40f, 0.27f, 0.12f, 1f);
+        pixmap.fill();
+        pixmap.setColor(0.55f, 0.38f, 0.2f, 1f);
+        pixmap.fillRectangle(2, 1, TILE_SIZE - 4, TILE_SIZE - 2);
+        pixmap.setColor(0.85f, 0.72f, 0.3f, 1f);
+        pixmap.fillRectangle(TILE_SIZE - 5, TILE_SIZE / 2 - 1, 2, 2);
+        Texture texture = new Texture(pixmap);
+        pixmap.dispose();
+        return texture;
+    }
+
+    private Texture createPlayerTexture() {
+        Pixmap pixmap = new Pixmap(TILE_SIZE, TILE_SIZE, Pixmap.Format.RGBA8888);
+        pixmap.setColor(0f, 0f, 0f, 0f);
+        pixmap.fill();
+        pixmap.setColor(0.2f, 0.9f, 0.2f, 1f);
+        pixmap.fillRectangle(4, 3, 8, 9);
+        pixmap.setColor(0.1f, 0.6f, 0.1f, 1f);
+        pixmap.fillRectangle(5, 12, 6, 3);
+        Texture texture = new Texture(pixmap);
+        pixmap.dispose();
+        return texture;
+    }
+
+    private Texture createMonsterTexture() {
+        Pixmap pixmap = new Pixmap(TILE_SIZE, TILE_SIZE, Pixmap.Format.RGBA8888);
+        pixmap.setColor(0f, 0f, 0f, 0f);
+        pixmap.fill();
+        pixmap.setColor(0.8f, 0.2f, 0.25f, 1f);
+        pixmap.fillRectangle(3, 3, 10, 10);
+        pixmap.setColor(0.95f, 0.95f, 0.95f, 1f);
+        pixmap.fillRectangle(5, 8, 2, 2);
+        pixmap.fillRectangle(9, 8, 2, 2);
+        Texture texture = new Texture(pixmap);
+        pixmap.dispose();
+        return texture;
+    }
+
+    private Texture createChestTexture(boolean opened) {
+        Pixmap pixmap = new Pixmap(TILE_SIZE, TILE_SIZE, Pixmap.Format.RGBA8888);
+        pixmap.setColor(0f, 0f, 0f, 0f);
+        pixmap.fill();
+        pixmap.setColor(0.45f, 0.28f, 0.12f, 1f);
+        pixmap.fillRectangle(2, 2, 12, 11);
+        pixmap.setColor(0.66f, 0.43f, 0.19f, 1f);
+        if (opened) {
+            pixmap.fillRectangle(2, 11, 12, 3);
+            pixmap.fillRectangle(2, 6, 12, 2);
+        } else {
+            pixmap.fillRectangle(2, 10, 12, 4);
+        }
+        pixmap.setColor(0.85f, 0.72f, 0.3f, 1f);
+        pixmap.fillRectangle(7, 6, 2, 3);
+        Texture texture = new Texture(pixmap);
+        pixmap.dispose();
+        return texture;
+    }
+
+    private Texture createSolidTexture(Color color) {
+        Pixmap pixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
+        pixmap.setColor(color);
+        pixmap.fill();
+        Texture texture = new Texture(pixmap);
+        pixmap.dispose();
+        return texture;
     }
 
     private void handleInput() {
@@ -170,7 +300,7 @@ public class Game extends ApplicationAdapter {
             player.takeDamage(8);
             addLog("Ловушка! -8 HP. Текущее HP: " + player.health());
             if (!player.isAlive()) {
-                addLog("GAME OVER");
+                addLog("ИГРА ОКОНЧЕНА");
             }
         }
     }
@@ -202,6 +332,12 @@ public class Game extends ApplicationAdapter {
             addLog("Сундука нет.");
             return;
         }
+        int dx = Math.abs(playerX - chest.x());
+        int dy = Math.abs(playerY - chest.y());
+        if (dx > 1 || dy > 1) {
+            addLog("Подойдите ближе к сундуку.");
+            return;
+        }
 
         List<Item> loot = chest.open();
         if (loot.isEmpty()) {
@@ -227,8 +363,15 @@ public class Game extends ApplicationAdapter {
 
     @Override
     public void dispose() {
-        shapeRenderer.dispose();
         batch.dispose();
         font.dispose();
+        for (Texture texture : tileTextures.values()) {
+            texture.dispose();
+        }
+        playerTexture.dispose();
+        chestClosedTexture.dispose();
+        chestOpenedTexture.dispose();
+        monsterTexture.dispose();
+        panelTexture.dispose();
     }
 }

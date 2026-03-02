@@ -48,4 +48,24 @@ class GameModelTest {
 
         assertTrue(traps > 0);
     }
+
+    @Test
+    void generatedChestSpawnsOnFloorTile() {
+        WorldGenerator generator = new WorldGenerator(123L);
+
+        Room roomWithChest = null;
+        for (int i = 0; i < 40; i++) {
+            Room room = generator.generate(i, i + 1);
+            if (room.chest() != null) {
+                roomWithChest = room;
+                break;
+            }
+        }
+
+        assertNotNull(roomWithChest, "Expected at least one room with chest during deterministic generation");
+        Chest chest = roomWithChest.chest();
+        assertNotNull(chest);
+        assertEquals(TileType.FLOOR, roomWithChest.tile(chest.x(), chest.y()));
+    }
+
 }
