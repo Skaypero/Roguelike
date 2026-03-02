@@ -43,12 +43,34 @@ public class WorldGenerator {
 
     private Room generateRandom(int roomX, int roomY) {
         TileType[][] tiles = createEmptyRoom();
-        addWallPatches(tiles);
 
-        List<MonsterInstance> monsters = generateMonsters(tiles, 2 + random.nextInt(4));
-        List<Chest> chests = generateChests(tiles, 1 + random.nextInt(3));
+        int style = Math.floorMod(roomX * 13 + roomY * 19, 3);
+        applyLayoutStyle(tiles, style);
+
+        int monstersCount = switch (style) {
+            case 0 -> 3 + random.nextInt(3);
+            case 1 -> 2 + random.nextInt(4);
+            default -> 4 + random.nextInt(3);
+        };
+        int chestCount = switch (style) {
+            case 0 -> 1 + random.nextInt(2);
+            case 1 -> 2 + random.nextInt(2);
+            default -> 1 + random.nextInt(3);
+        };
+
+        List<MonsterInstance> monsters = generateMonsters(tiles, monstersCount);
+        List<Chest> chests = generateChests(tiles, chestCount);
 
         return new Room(roomX, roomY, tiles, monsters, chests);
+    }
+
+    private void applyLayoutStyle(TileType[][] tiles, int style) {
+        switch (style) {
+            case 0 -> addWallPatches(tiles, 8, 12, 0.35);
+            case 1 -> addCorridors(tiles);
+            case 2 -> addIslands(tiles);
+            default -> addWallPatches(tiles, 10, 12, 0.4);
+        }
     }
 
     private Room generateFromTemplate(int roomX, int roomY) {
@@ -79,7 +101,7 @@ public class WorldGenerator {
                         case 'W' -> tiles[y][x] = TileType.DOOR_WEST;
                         case 'M' -> {
                             tiles[y][x] = TileType.FLOOR;
-                            monsters.add(new MonsterInstance(randomMonster(), x, y, random.nextInt(4)));
+                            monsters.add(new MonsterInstance(randomMonster(), x, y, random.nextInt(5)));
                         }
                         case 'C' -> {
                             tiles[y][x] = TileType.FLOOR;
@@ -118,8 +140,8 @@ public class WorldGenerator {
         return tiles;
     }
 
-    private void addWallPatches(TileType[][] tiles) {
-        int clusters = 10 + random.nextInt(6);
+    private void addWallPatches(TileType[][] tiles, int minClusters, int maxClusters, double turnChance) {
+        int clusters = minClusters + random.nextInt(maxClusters - minClusters + 1);
         for (int cluster = 0; cluster < clusters; cluster++) {
             int x = 2 + random.nextInt(Room.WIDTH - 4);
             int y = 2 + random.nextInt(Room.HEIGHT - 4);
@@ -132,7 +154,7 @@ public class WorldGenerator {
                     maybeThickenWall(tiles, x, y);
                 }
 
-                if (step % 2 == 0 && random.nextDouble() < 0.4) {
+                if (step % 2 == 0 && random.nextDouble() < turnChance) {
                     direction = (direction + (random.nextBoolean() ? 1 : 3)) % 4;
                 }
                 switch (direction) {
@@ -143,6 +165,50 @@ public class WorldGenerator {
                 }
                 x = Math.max(1, Math.min(Room.WIDTH - 2, x));
                 y = Math.max(1, Math.min(Room.HEIGHT - 2, y));
+            }
+        }
+    }
+
+    private void addCorridors(TileType[][] tiles) {
+        for (int y = 4; y < Room.HEIGHT - 4; y += 8) {
+            for (int x = 1; x < Room.WIDTH - 1; x++) {
+                if (x == Room.WIDTH / 2) {
+                    continue;
+                }
+                if (tiles[y][x] == TileType.FLOOR && random.nextDouble() < 0.8) {
+                    tiles[y][x] = TileType.WALL;
+                }
+            }
+        }
+        for (int x = 6; x < Room.WIDTH - 6; x += 10) {
+            for (int y = 1; y < Room.HEIGHT - 1; y++) {
+                if (y == Room.HEIGHT / 2) {
+                    continue;
+                }
+                if (tiles[y][x] == TileType.FLOOR && random.nextDouble() < 0.7) {
+                    tiles[y][x] = TileType.WALL;
+                }
+            }
+        }
+    }
+
+    private void addIslands(TileType[][] tiles) {
+        int islands = 6 + random.nextInt(4);
+        for (int i = 0; i < islands; i++) {
+            int cx = 4 + random.nextInt(Room.WIDTH - 8);
+            int cy = 4 + random.nextInt(Room.HEIGHT - 8);
+            int radius = 2 + random.nextInt(3);
+            for (int y = cy - radius; y <= cy + radius; y++) {
+                for (int x = cx - radius; x <= cx + radius; x++) {
+                    if (!isSafeForFeature(x, y)) {
+                        continue;
+                    }
+                    int dx = x - cx;
+                    int dy = y - cy;
+                    if (dx * dx + dy * dy <= radius * radius && tiles[y][x] == TileType.FLOOR) {
+                        tiles[y][x] = TileType.WALL;
+                    }
+                }
             }
         }
     }
@@ -160,7 +226,7 @@ public class WorldGenerator {
         List<MonsterInstance> monsters = new ArrayList<>();
         for (int i = 0; i < count; i++) {
             int[] pos = randomFloorPosition(tiles);
-            monsters.add(new MonsterInstance(randomMonster(), pos[0], pos[1], random.nextInt(4)));
+            monsters.add(new MonsterInstance(randomMonster(), pos[0], pos[1], random.nextInt(5)));
         }
         return monsters;
     }

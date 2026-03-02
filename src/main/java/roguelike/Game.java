@@ -8,6 +8,7 @@ import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 
 import java.util.ArrayList;
@@ -17,8 +18,9 @@ import java.util.List;
 import java.util.Map;
 
 public class Game extends ApplicationAdapter {
-    private static final int TILE_RENDER_SIZE = 22;
     private static final int TILE_TEXTURE_SIZE = 64;
+    private static final int BOARD_PADDING = 24;
+    private static final int PANEL_WIDTH = 420;
 
     private enum GameState { MENU, PLAYING }
 
@@ -37,11 +39,12 @@ public class Game extends ApplicationAdapter {
 
     private SpriteBatch batch;
     private BitmapFont font;
+    private final GlyphLayout layout = new GlyphLayout();
     private Texture playerTexture;
     private Texture chestClosedTexture;
     private Texture chestOpenedTexture;
     private Texture panelTexture;
-    private final Texture[] monsterTextures = new Texture[4];
+    private final Texture[] monsterTextures = new Texture[5];
 
     @Override
     public void create() {
@@ -57,7 +60,7 @@ public class Game extends ApplicationAdapter {
             monsterTextures[i] = createMonsterTexture(i);
         }
 
-        addLog("Welcome! Select map mode in menu.");
+        addLog("Welcome! Choose generation mode.");
     }
 
     @Override
@@ -95,68 +98,108 @@ public class Game extends ApplicationAdapter {
         playerY = Room.HEIGHT / 2;
         state = GameState.PLAYING;
         addLog("Mode: " + mode);
-        addLog("Controls: WASD/Arrows move.");
-        addLog("F: fight, E: open chest, Q: use consumable.");
-        addLog("Inventory: TAB / SHIFT+TAB.");
+        addLog("Move: WASD / Arrows");
+        addLog("Actions: F fight, E open, Q consume");
+        addLog("Inventory: TAB / SHIFT+TAB");
+        addLog("Esc: back to menu");
     }
 
     private void drawMenu() {
+        int w = Gdx.graphics.getWidth();
+        int h = Gdx.graphics.getHeight();
+
         batch.begin();
-        font.draw(batch, "ROGUELIKE", 420, 500);
-        font.draw(batch, "1 - Random generation", 360, 450);
-        font.draw(batch, "2 - Predefined templates from files", 360, 420);
-        font.draw(batch, "Textures: 64x64 source, scaled on screen", 320, 380);
-        font.draw(batch, "No binary assets are committed", 360, 352);
+        drawCentered("ROGUELIKE", w / 2f, h * 0.70f);
+        drawCentered("1 - Random generation", w / 2f, h * 0.60f);
+        drawCentered("2 - Predefined template generation", w / 2f, h * 0.55f);
+        drawCentered("Fullscreen + centered UI + runtime textures", w / 2f, h * 0.46f);
+        drawCentered("Press 1 or 2", w / 2f, h * 0.38f);
         batch.end();
+    }
+
+    private void drawCentered(String text, float centerX, float y) {
+        layout.setText(font, text);
+        font.draw(batch, text, centerX - layout.width / 2f, y);
     }
 
     private void drawGame() {
         Room room = currentRoom();
         RoomTexturePack textures = currentRoomTextures();
 
+        int screenW = Gdx.graphics.getWidth();
+        int screenH = Gdx.graphics.getHeight();
+        int availableBoardW = screenW - PANEL_WIDTH - BOARD_PADDING * 3;
+        int availableBoardH = screenH - BOARD_PADDING * 2;
+        int tileRenderSize = Math.max(12, Math.min(availableBoardW / Room.WIDTH, availableBoardH / Room.HEIGHT));
+
+        int boardPixelW = Room.WIDTH * tileRenderSize;
+        int boardPixelH = Room.HEIGHT * tileRenderSize;
+        int groupW = boardPixelW + BOARD_PADDING + PANEL_WIDTH;
+        int startX = Math.max(BOARD_PADDING, (screenW - groupW) / 2);
+        int boardX = startX;
+        int boardY = Math.max(BOARD_PADDING, (screenH - boardPixelH) / 2);
+        int panelX = boardX + boardPixelW + BOARD_PADDING;
+        int panelY = boardY;
+
         batch.begin();
 
         for (int y = 0; y < Room.HEIGHT; y++) {
             for (int x = 0; x < Room.WIDTH; x++) {
                 Texture tileTexture = textures.tileTextures.get(room.tile(x, y));
-                batch.draw(tileTexture, x * TILE_RENDER_SIZE, y * TILE_RENDER_SIZE, TILE_RENDER_SIZE, TILE_RENDER_SIZE);
+                batch.draw(tileTexture,
+                        boardX + x * tileRenderSize,
+                        boardY + y * tileRenderSize,
+                        tileRenderSize,
+                        tileRenderSize);
             }
         }
 
         for (Chest chest : room.chests()) {
             Texture chestTexture = chest.isOpened() ? chestOpenedTexture : chestClosedTexture;
-            batch.draw(chestTexture, chest.x() * TILE_RENDER_SIZE, chest.y() * TILE_RENDER_SIZE, TILE_RENDER_SIZE, TILE_RENDER_SIZE);
+            batch.draw(chestTexture,
+                    boardX + chest.x() * tileRenderSize,
+                    boardY + chest.y() * tileRenderSize,
+                    tileRenderSize,
+                    tileRenderSize);
         }
 
         for (MonsterInstance monster : room.monsters()) {
             if (monster.isAlive()) {
                 Texture mTexture = monsterTextures[Math.floorMod(monster.textureVariant(), monsterTextures.length)];
-                batch.draw(mTexture, monster.x() * TILE_RENDER_SIZE, monster.y() * TILE_RENDER_SIZE, TILE_RENDER_SIZE, TILE_RENDER_SIZE);
+                batch.draw(mTexture,
+                        boardX + monster.x() * tileRenderSize,
+                        boardY + monster.y() * tileRenderSize,
+                        tileRenderSize,
+                        tileRenderSize);
             }
         }
 
-        batch.draw(playerTexture, playerX * TILE_RENDER_SIZE, playerY * TILE_RENDER_SIZE, TILE_RENDER_SIZE, TILE_RENDER_SIZE);
+        batch.draw(playerTexture,
+                boardX + playerX * tileRenderSize,
+                boardY + playerY * tileRenderSize,
+                tileRenderSize,
+                tileRenderSize);
 
-        int panelX = Room.WIDTH * TILE_RENDER_SIZE + 8;
-        batch.draw(panelTexture, panelX, 8, 450, 940);
+        batch.draw(panelTexture, panelX, panelY, PANEL_WIDTH, boardPixelH);
 
-        int infoX = Room.WIDTH * TILE_RENDER_SIZE + 16;
-        int topY = 930;
+        int infoX = panelX + 14;
+        int topY = panelY + boardPixelH - 12;
         font.draw(batch, "Room: [" + roomX + ", " + roomY + "]", infoX, topY);
         font.draw(batch, "HP: " + player.health() + "  ATK: " + player.attackPower(), infoX, topY - 20);
         long alive = room.monsters().stream().filter(MonsterInstance::isAlive).count();
         font.draw(batch, "Monsters alive: " + alive, infoX, topY - 40);
         font.draw(batch, "Chests: " + room.chests().size(), infoX, topY - 60);
 
-        drawInventory(infoX, topY - 90);
+        int inventoryY = topY - 88;
+        drawInventory(infoX, inventoryY);
 
-        int logY = 360;
+        int logY = panelY + 220;
         font.draw(batch, "Log:", infoX, logY);
         logY -= 16;
         for (String s : log) {
             font.draw(batch, s, infoX, logY);
             logY -= 16;
-            if (logY < 20) {
+            if (logY < panelY + 20) {
                 break;
             }
         }
@@ -173,7 +216,7 @@ public class Game extends ApplicationAdapter {
         }
 
         int selected = player.selectedItemIndex();
-        int maxLines = 9;
+        int maxLines = 10;
         int start = Math.max(0, selected - 4);
         if (start + maxLines > inventory.size()) {
             start = Math.max(0, inventory.size() - maxLines);
@@ -356,19 +399,20 @@ public class Game extends ApplicationAdapter {
     }
 
     private RoomTexturePack createRoomTexturePack(int x, int y) {
-        int theme = Math.floorMod(x * 17 + y * 37, 4);
+        int theme = Math.floorMod(x * 17 + y * 37, 5);
         Color floorA = switch (theme) {
             case 0 -> new Color(0.32f, 0.30f, 0.36f, 1f);
             case 1 -> new Color(0.24f, 0.34f, 0.32f, 1f);
             case 2 -> new Color(0.34f, 0.28f, 0.24f, 1f);
-            default -> new Color(0.22f, 0.26f, 0.34f, 1f);
+            case 3 -> new Color(0.28f, 0.24f, 0.34f, 1f);
+            default -> new Color(0.20f, 0.30f, 0.36f, 1f);
         };
-        Color wallA = floorA.cpy().mul(0.55f, 0.55f, 0.55f, 1f);
+        Color wallA = floorA.cpy().mul(0.52f, 0.52f, 0.52f, 1f);
         Color doorA = new Color(0.50f, 0.34f, 0.18f, 1f);
 
         Map<TileType, Texture> tiles = new EnumMap<>(TileType.class);
-        tiles.put(TileType.FLOOR, createTileTexture(floorA, floorA.cpy().mul(1.1f, 1.1f, 1.1f, 1f)));
-        tiles.put(TileType.WALL, createTileTexture(wallA, wallA.cpy().mul(1.2f, 1.2f, 1.2f, 1f)));
+        tiles.put(TileType.FLOOR, createTileTexture(floorA, floorA.cpy().mul(1.12f, 1.12f, 1.12f, 1f)));
+        tiles.put(TileType.WALL, createTileTexture(wallA, wallA.cpy().mul(1.24f, 1.24f, 1.24f, 1f)));
         tiles.put(TileType.TRAP, createTileTexture(new Color(0.3f, 0.1f, 0.1f, 1f), new Color(0.7f, 0.15f, 0.15f, 1f)));
         Texture door = createDoorTexture(doorA);
         tiles.put(TileType.DOOR_NORTH, door);
@@ -388,6 +432,11 @@ public class Game extends ApplicationAdapter {
         }
         for (int x = 0; x < TILE_TEXTURE_SIZE; x += 8) {
             pixmap.drawLine(x, 0, x, TILE_TEXTURE_SIZE - 1);
+        }
+        for (int i = 0; i < 20; i++) {
+            int px = (i * 17 + (int) (base.r * 1000)) % TILE_TEXTURE_SIZE;
+            int py = (i * 29 + (int) (base.g * 1000)) % TILE_TEXTURE_SIZE;
+            pixmap.fillRectangle(px, py, 2, 2);
         }
         Texture texture = new Texture(pixmap);
         pixmap.dispose();
@@ -423,7 +472,8 @@ public class Game extends ApplicationAdapter {
             case 0 -> new Color(0.75f, 0.2f, 0.22f, 1f);
             case 1 -> new Color(0.2f, 0.7f, 0.28f, 1f);
             case 2 -> new Color(0.25f, 0.45f, 0.8f, 1f);
-            default -> new Color(0.7f, 0.32f, 0.75f, 1f);
+            case 3 -> new Color(0.7f, 0.32f, 0.75f, 1f);
+            default -> new Color(0.8f, 0.55f, 0.22f, 1f);
         };
         Pixmap pixmap = new Pixmap(TILE_TEXTURE_SIZE, TILE_TEXTURE_SIZE, Pixmap.Format.RGBA8888);
         pixmap.setColor(0f, 0f, 0f, 0f);
