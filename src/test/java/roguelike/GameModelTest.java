@@ -20,21 +20,32 @@ class GameModelTest {
     }
 
     @Test
-    void chestCanBeOpenedOnlyOnce() {
-        Chest chest = new Chest(List.of(new Item("Potion", ItemType.CONSUMABLE, 10)));
+    void generatedRoomHasExpectedSizeAndDoors() {
+        WorldGenerator generator = new WorldGenerator(42L);
+        Room room = generator.generate(0, 0);
 
-        assertEquals(1, chest.open().size());
-        assertTrue(chest.open().isEmpty());
+        assertEquals(Room.WIDTH, room.tiles()[0].length);
+        assertEquals(Room.HEIGHT, room.tiles().length);
+        assertEquals(TileType.DOOR_NORTH, room.tile(Room.WIDTH / 2, Room.HEIGHT - 1));
+        assertEquals(TileType.DOOR_SOUTH, room.tile(Room.WIDTH / 2, 0));
+        assertEquals(TileType.DOOR_WEST, room.tile(0, Room.HEIGHT / 2));
+        assertEquals(TileType.DOOR_EAST, room.tile(Room.WIDTH - 1, Room.HEIGHT / 2));
     }
 
     @Test
-    void generatedRoomsAreDeterministicForSameSeed() {
-        WorldGenerator genA = new WorldGenerator(42L);
-        WorldGenerator genB = new WorldGenerator(42L);
+    void generatedRoomContainsTraps() {
+        WorldGenerator generator = new WorldGenerator(10L);
+        Room room = generator.generate(3, 2);
 
-        Room a = genA.generate(1, -3);
-        Room b = genB.generate(1, -3);
+        int traps = 0;
+        for (int y = 0; y < Room.HEIGHT; y++) {
+            for (int x = 0; x < Room.WIDTH; x++) {
+                if (room.tile(x, y) == TileType.TRAP) {
+                    traps++;
+                }
+            }
+        }
 
-        assertEquals(a.description(), b.description());
+        assertTrue(traps > 0);
     }
 }

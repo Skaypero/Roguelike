@@ -1,92 +1,177 @@
 package roguelike;
 
-import javax.swing.AbstractAction;
-import javax.swing.JFrame;
-import javax.swing.JPanel;
-import javax.swing.KeyStroke;
-import java.awt.BorderLayout;
-import java.awt.Color;
-import java.awt.Dimension;
-import java.awt.Font;
-import java.awt.Graphics;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
-import java.awt.event.ActionEvent;
+import com.badlogic.gdx.ApplicationAdapter;
+import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Input;
+import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class Game extends JFrame {
+public class Game extends ApplicationAdapter {
+    private static final int TILE_SIZE = 16;
+
     private final Player player = new Player();
     private final WorldGenerator generator = new WorldGenerator(System.currentTimeMillis());
     private final Map<String, Room> rooms = new HashMap<>();
-    private final List<String> combatLog = new ArrayList<>();
+    private final List<String> log = new ArrayList<>();
 
-    private int x = 0;
-    private int y = 0;
+    private int roomX = 0;
+    private int roomY = 0;
+    private int playerX = Room.WIDTH / 2;
+    private int playerY = Room.HEIGHT / 2;
 
-    public static void main(String[] args) {
-        javax.swing.SwingUtilities.invokeLater(() -> {
-            Game game = new Game();
-            game.setVisible(true);
-        });
+    private ShapeRenderer shapeRenderer;
+    private SpriteBatch batch;
+    private BitmapFont font;
+
+    @Override
+    public void create() {
+        shapeRenderer = new ShapeRenderer();
+        batch = new SpriteBatch();
+        font = new BitmapFont();
+        font.setColor(Color.WHITE);
+        addLog("libGDX roguelike: WASD/стрелки ходить, F бить, E сундук, Q зелье");
     }
 
-    public Game() {
-        super("Java Roguelike (Swing)");
-        setDefaultCloseOperation(EXIT_ON_CLOSE);
-        setResizable(false);
+    @Override
+    public void render() {
+        handleInput();
 
-        GamePanel panel = new GamePanel();
-        panel.setPreferredSize(new Dimension(920, 620));
-        setLayout(new BorderLayout());
-        add(panel, BorderLayout.CENTER);
+        Gdx.gl.glClearColor(0.08f, 0.08f, 0.12f, 1f);
+        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
-        bindControls(panel);
-        pack();
-        setLocationRelativeTo(null);
-
-        log("Добро пожаловать! Стрелки/WASD: движение, F: атака, E: сундук, Q: зелье.");
-    }
-
-    private void bindControls(JPanel panel) {
-        bind(panel, "UP", () -> move(Direction.NORTH));
-        bind(panel, "DOWN", () -> move(Direction.SOUTH));
-        bind(panel, "LEFT", () -> move(Direction.WEST));
-        bind(panel, "RIGHT", () -> move(Direction.EAST));
-        bind(panel, "W", () -> move(Direction.NORTH));
-        bind(panel, "S", () -> move(Direction.SOUTH));
-        bind(panel, "A", () -> move(Direction.WEST));
-        bind(panel, "D", () -> move(Direction.EAST));
-
-        bind(panel, "F", this::fight);
-        bind(panel, "E", this::openChest);
-        bind(panel, "Q", this::usePotion);
-    }
-
-    private void bind(JPanel panel, String key, Runnable action) {
-        String name = "action_" + key;
-        panel.getInputMap(JPanel.WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(key), name);
-        panel.getActionMap().put(name, new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                if (!player.isAlive()) {
-                    return;
-                }
-                action.run();
-                panel.repaint();
-            }
-        });
-    }
-
-    private void move(Direction direction) {
-        x += direction.dx();
-        y += direction.dy();
         Room room = currentRoom();
-        log("Вы вошли в комнату [" + x + ", " + y + "].");
+
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        for (int y = 0; y < Room.HEIGHT; y++) {
+            for (int x = 0; x < Room.WIDTH; x++) {
+                shapeRenderer.setColor(colorForTile(room.tile(x, y)));
+                shapeRenderer.rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            }
+        }
+
+        shapeRenderer.setColor(new Color(0.2f, 0.2f, 0.2f, 1f));
+        shapeRenderer.rect(Room.WIDTH * TILE_SIZE + 8, 8, 320, 620);
+
+        shapeRenderer.setColor(new Color(0.2f, 0.9f, 0.2f, 1f));
+        shapeRenderer.rect(playerX * TILE_SIZE + 2, playerY * TILE_SIZE + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+        shapeRenderer.end();
+
+        batch.begin();
+        int infoX = Room.WIDTH * TILE_SIZE + 16;
+        int topY = 610;
+
+        font.draw(batch, "Room: [" + roomX + ", " + roomY + "]", infoX, topY);
+        font.draw(batch, "HP: " + player.health() + "  ATK: " + player.attackPower(), infoX, topY - 24);
         if (room.monster() != null && room.monster().isAlive()) {
-            log("Вас встречает " + room.monster().name() + " (HP: " + room.monster().health() + ").");
+            font.draw(batch, "Monster: " + room.monster().name() + " HP " + room.monster().health(), infoX, topY - 48);
+        } else {
+            font.draw(batch, "Monster: none", infoX, topY - 48);
+        }
+        font.draw(batch, "Inventory: " + player.inventory().size(), infoX, topY - 72);
+
+        int lineY = topY - 120;
+        for (String s : log) {
+            font.draw(batch, s, infoX, lineY);
+            lineY -= 20;
+        }
+        batch.end();
+    }
+
+    private Color colorForTile(TileType tile) {
+        return switch (tile) {
+            case FLOOR -> new Color(0.35f, 0.35f, 0.40f, 1f);
+            case WALL -> new Color(0.14f, 0.14f, 0.16f, 1f);
+            case TRAP -> new Color(0.8f, 0.2f, 0.2f, 1f);
+            case DOOR_NORTH, DOOR_EAST, DOOR_SOUTH, DOOR_WEST -> new Color(0.9f, 0.8f, 0.3f, 1f);
+        };
+    }
+
+    private void handleInput() {
+        if (!player.isAlive()) {
+            return;
+        }
+
+        if (Gdx.input.isKeyJustPressed(Input.Keys.W) || Gdx.input.isKeyJustPressed(Input.Keys.UP)) {
+            moveBy(0, 1);
+        } else if (Gdx.input.isKeyJustPressed(Input.Keys.S) || Gdx.input.isKeyJustPressed(Input.Keys.DOWN)) {
+            moveBy(0, -1);
+        } else if (Gdx.input.isKeyJustPressed(Input.Keys.A) || Gdx.input.isKeyJustPressed(Input.Keys.LEFT)) {
+            moveBy(-1, 0);
+        } else if (Gdx.input.isKeyJustPressed(Input.Keys.D) || Gdx.input.isKeyJustPressed(Input.Keys.RIGHT)) {
+            moveBy(1, 0);
+        }
+
+        if (Gdx.input.isKeyJustPressed(Input.Keys.F)) {
+            fight();
+        }
+        if (Gdx.input.isKeyJustPressed(Input.Keys.E)) {
+            openChest();
+        }
+        if (Gdx.input.isKeyJustPressed(Input.Keys.Q)) {
+            boolean used = player.usePotionIfAny();
+            addLog(used ? "Использовано лечение." : "Лечебных предметов нет.");
+        }
+    }
+
+    private void moveBy(int dx, int dy) {
+        Room room = currentRoom();
+        int nx = playerX + dx;
+        int ny = playerY + dy;
+
+        if (nx < 0 || ny < 0 || nx >= Room.WIDTH || ny >= Room.HEIGHT) {
+            return;
+        }
+
+        TileType target = room.tile(nx, ny);
+        if (target == TileType.WALL) {
+            return;
+        }
+
+        if (target == TileType.DOOR_NORTH) {
+            roomY += 1;
+            playerX = Room.WIDTH / 2;
+            playerY = 1;
+            addLog("Переход в северную комнату.");
+            return;
+        }
+        if (target == TileType.DOOR_SOUTH) {
+            roomY -= 1;
+            playerX = Room.WIDTH / 2;
+            playerY = Room.HEIGHT - 2;
+            addLog("Переход в южную комнату.");
+            return;
+        }
+        if (target == TileType.DOOR_EAST) {
+            roomX += 1;
+            playerX = 1;
+            playerY = Room.HEIGHT / 2;
+            addLog("Переход в восточную комнату.");
+            return;
+        }
+        if (target == TileType.DOOR_WEST) {
+            roomX -= 1;
+            playerX = Room.WIDTH - 2;
+            playerY = Room.HEIGHT / 2;
+            addLog("Переход в западную комнату.");
+            return;
+        }
+
+        playerX = nx;
+        playerY = ny;
+        if (target == TileType.TRAP) {
+            player.takeDamage(8);
+            addLog("Ловушка! -8 HP. Текущее HP: " + player.health());
+            if (!player.isAlive()) {
+                addLog("GAME OVER");
+            }
         }
     }
 
@@ -94,119 +179,56 @@ public class Game extends JFrame {
         Room room = currentRoom();
         Monster monster = room.monster();
         if (monster == null || !monster.isAlive()) {
-            log("В этой комнате нет живых монстров.");
+            addLog("Монстра рядом нет.");
             return;
         }
 
-        int damage = player.attackPower();
-        monster.takeDamage(damage);
-        log("Вы нанесли " + damage + " урона монстру " + monster.name() + ".");
-
+        int playerDamage = player.attackPower();
+        monster.takeDamage(playerDamage);
+        addLog("Вы нанесли " + playerDamage + " урона монстру " + monster.name() + ".");
         if (!monster.isAlive()) {
-            log("Монстр побеждён!");
+            addLog("Монстр повержен.");
             return;
         }
 
         player.takeDamage(monster.attack());
-        log(monster.name() + " наносит " + monster.attack() + " урона. HP героя: " + player.health());
-        if (!player.isAlive()) {
-            log("Герой пал. Нажмите Alt+F4, чтобы закрыть окно.");
-        }
+        addLog(monster.name() + " ударил на " + monster.attack() + ". HP: " + player.health());
     }
 
     private void openChest() {
         Room room = currentRoom();
         Chest chest = room.chest();
         if (chest == null) {
-            log("Сундука в комнате нет.");
+            addLog("Сундука нет.");
             return;
         }
 
         List<Item> loot = chest.open();
         if (loot.isEmpty()) {
-            log("Сундук уже открыт.");
+            addLog("Сундук пуст.");
             return;
         }
 
         player.addItems(loot);
-        log("Вы открыли сундук и нашли: " + loot);
-    }
-
-    private void usePotion() {
-        boolean used = player.usePotionIfAny();
-        log(used ? "Вы использовали лечащий предмет." : "В инвентаре нет лечащих предметов.");
+        addLog("Лут: " + loot);
     }
 
     private Room currentRoom() {
-        String key = x + ":" + y;
-        return rooms.computeIfAbsent(key, ignored -> generator.generate(x, y));
+        String key = roomX + ":" + roomY;
+        return rooms.computeIfAbsent(key, ignored -> generator.generate(roomX, roomY));
     }
 
-    private void log(String message) {
-        combatLog.add(0, message);
-        if (combatLog.size() > 14) {
-            combatLog.remove(combatLog.size() - 1);
+    private void addLog(String message) {
+        log.add(0, message);
+        if (log.size() > 20) {
+            log.remove(log.size() - 1);
         }
     }
 
-    private class GamePanel extends JPanel {
-        @Override
-        protected void paintComponent(Graphics graphics) {
-            super.paintComponent(graphics);
-            Graphics2D g = (Graphics2D) graphics;
-            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-
-            g.setColor(new Color(20, 20, 28));
-            g.fillRect(0, 0, getWidth(), getHeight());
-
-            Room room = currentRoom();
-
-            g.setColor(Color.WHITE);
-            g.setFont(new Font(Font.MONOSPACED, Font.BOLD, 21));
-            g.drawString("Roguelike (не консольная версия)", 25, 40);
-
-            g.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 16));
-            g.drawString("Комната: [" + x + ", " + y + "]", 25, 80);
-            g.drawString("HP героя: " + player.health(), 25, 110);
-            g.drawString("Сила атаки: " + player.attackPower(), 25, 140);
-            g.drawString("Инвентарь: " + player.inventory().size() + " предметов", 25, 170);
-
-            g.drawString("Управление: WASD/стрелки - ходить, F - атаковать, E - сундук, Q - зелье", 25, 210);
-
-            g.setColor(new Color(60, 90, 130));
-            g.fillRoundRect(25, 250, 360, 220, 16, 16);
-            g.setColor(Color.WHITE);
-            g.drawString("Состояние комнаты", 40, 280);
-            g.drawString("Двери: север, восток, юг, запад", 40, 310);
-            if (room.monster() != null && room.monster().isAlive()) {
-                g.drawString("Монстр: " + room.monster().name() + " (HP " + room.monster().health() + ")", 40, 340);
-            } else {
-                g.drawString("Монстр: нет", 40, 340);
-            }
-            if (room.chest() != null && !room.chest().isOpened()) {
-                g.drawString("Сундук: закрыт", 40, 370);
-            } else if (room.chest() != null) {
-                g.drawString("Сундук: открыт", 40, 370);
-            } else {
-                g.drawString("Сундук: нет", 40, 370);
-            }
-
-            g.setColor(new Color(45, 45, 45));
-            g.fillRoundRect(420, 70, 470, 530, 16, 16);
-            g.setColor(Color.WHITE);
-            g.drawString("Журнал событий", 440, 100);
-
-            int lineY = 130;
-            for (String message : combatLog) {
-                g.drawString("- " + message, 440, lineY);
-                lineY += 30;
-            }
-
-            if (!player.isAlive()) {
-                g.setColor(new Color(170, 20, 40));
-                g.setFont(new Font(Font.MONOSPACED, Font.BOLD, 36));
-                g.drawString("GAME OVER", 325, 520);
-            }
-        }
+    @Override
+    public void dispose() {
+        shapeRenderer.dispose();
+        batch.dispose();
+        font.dispose();
     }
 }

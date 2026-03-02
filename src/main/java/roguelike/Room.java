@@ -1,24 +1,37 @@
 package roguelike;
 
 public class Room {
-    private final int x;
-    private final int y;
+    public static final int WIDTH = 40;
+    public static final int HEIGHT = 40;
+
+    private final int roomX;
+    private final int roomY;
+    private final TileType[][] tiles;
     private final Monster monster;
     private final Chest chest;
 
-    public Room(int x, int y, Monster monster, Chest chest) {
-        this.x = x;
-        this.y = y;
+    public Room(int roomX, int roomY, TileType[][] tiles, Monster monster, Chest chest) {
+        this.roomX = roomX;
+        this.roomY = roomY;
+        this.tiles = tiles;
         this.monster = monster;
         this.chest = chest;
     }
 
-    public int x() {
-        return x;
+    public int roomX() {
+        return roomX;
     }
 
-    public int y() {
-        return y;
+    public int roomY() {
+        return roomY;
+    }
+
+    public TileType tile(int x, int y) {
+        return tiles[y][x];
+    }
+
+    public TileType[][] tiles() {
+        return tiles;
     }
 
     public Monster monster() {
@@ -29,18 +42,11 @@ public class Room {
         return chest;
     }
 
-    public String description() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Комната [").append(x).append(", ").append(y).append("]\n");
-        sb.append("Есть 4 двери: север, восток, юг, запад.\n");
-        if (monster != null && monster.isAlive()) {
-            sb.append("Монстр: ").append(monster.name()).append(" (HP ").append(monster.health()).append(")\n");
-        } else {
-            sb.append("Монстров не видно.\n");
+    public boolean isWalkable(int x, int y) {
+        if (x < 0 || y < 0 || x >= WIDTH || y >= HEIGHT) {
+            return false;
         }
-        if (chest != null && !chest.isOpened()) {
-            sb.append("В комнате есть сундук.\n");
-        }
-        return sb.toString();
+        TileType t = tile(x, y);
+        return t != TileType.WALL;
     }
 }
