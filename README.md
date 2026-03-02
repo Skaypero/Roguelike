@@ -1,34 +1,42 @@
-# Roguelike на Java + libGDX
+# Roguelike on Java + libGDX
 
-Теперь игра перенесена с Swing на **libGDX** (популярный Java-фреймворк для 2D/3D игр).
+A simple room-based roguelike using **libGDX**.
 
-## Что реализовано
+## Features
 
-- Игровые комнаты размером **40x40 клеток**.
-- В комнатах есть:
-  - стены (границы + случайные внутренние препятствия),
-  - ловушки,
-  - двери по 4 сторонам,
-  - монстр и сундук (рандомно).
-- Переход между комнатами происходит через двери на границах карты.
-- Управление с клавиатуры:
-  - `W/A/S/D` или стрелки — движение,
-  - `F` — атаковать,
-  - `E` — открыть сундук,
-  - `Q` — использовать выбранный лечебный предмет,
-  - `Tab` / `Shift+Tab` — переключение предмета в инвентаре.
+- 40x40 tile rooms.
+- Main menu with generation mode selection:
+  - `1` — random map generation,
+  - `2` — predefined room templates from text files in `src/main/resources/maps`.
+- Room content:
+  - walls and doors,
+  - multiple monsters,
+  - multiple chests,
+  - no traps.
+- Inventory UI and item selection:
+  - `Tab` / `Shift+Tab` to select item,
+  - selected weapon affects attack,
+  - `Q` uses selected consumable.
+- Runtime-generated textures (no binary assets committed):
+  - 64x64 source textures for tiles/entities,
+  - room-specific visual themes.
 
-## Запуск
+## Controls
+
+- `W/A/S/D` or arrows — move
+- `F` — fight adjacent monster
+- `E` — open nearby chest
+- `Q` — use consumable
+- `Esc` — back to menu
+
+## Run
 
 ```bash
 mvn exec:java
 ```
 
-## Тесты
+## Tests
 
 ```bash
 mvn test
 ```
-
-
-Текстуры тайлов 16x16 генерируются в рантайме и сохраняются как PNG в `generated-textures/` (без коммита бинарных файлов).

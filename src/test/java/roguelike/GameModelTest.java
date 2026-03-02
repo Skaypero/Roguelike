@@ -49,7 +49,7 @@ class GameModelTest {
     }
 
     @Test
-    void generatedRoomContainsFewerTrapsThanBefore() {
+    void generatedRoomHasNoTrapsAndHasMultipleEntities() {
         WorldGenerator generator = new WorldGenerator(10L);
         Room room = generator.generate(3, 2);
 
@@ -62,26 +62,18 @@ class GameModelTest {
             }
         }
 
-        assertTrue(traps >= 4);
-        assertTrue(traps <= 18);
+        assertEquals(0, traps);
+        assertTrue(room.monsters().size() >= 2);
+        assertTrue(room.chests().size() >= 1);
     }
 
     @Test
-    void generatedChestSpawnsOnFloorTile() {
+    void predefinedGenerationLoadsEntitiesFromTemplates() {
         WorldGenerator generator = new WorldGenerator(123L);
+        generator.setMode(WorldGenerator.GenerationMode.PREDEFINED);
+        Room room = generator.generate(0, 0);
 
-        Room roomWithChest = null;
-        for (int i = 0; i < 40; i++) {
-            Room room = generator.generate(i, i + 1);
-            if (room.chest() != null) {
-                roomWithChest = room;
-                break;
-            }
-        }
-
-        assertNotNull(roomWithChest, "Expected at least one room with chest during deterministic generation");
-        Chest chest = roomWithChest.chest();
-        assertNotNull(chest);
-        assertEquals(TileType.FLOOR, roomWithChest.tile(chest.x(), chest.y()));
+        assertFalse(room.monsters().isEmpty());
+        assertFalse(room.chests().isEmpty());
     }
 }

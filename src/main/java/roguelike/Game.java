@@ -6,12 +6,9 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Pixmap;
-import com.badlogic.gdx.graphics.PixmapIO;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
-import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator;
-import com.badlogic.gdx.utils.ScreenUtils;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -20,11 +17,15 @@ import java.util.List;
 import java.util.Map;
 
 public class Game extends ApplicationAdapter {
-    private static final int TILE_SIZE = 16;
+    private static final int TILE_RENDER_SIZE = 16;
+    private static final int TILE_TEXTURE_SIZE = 64;
+
+    private enum GameState { MENU, PLAYING }
 
     private final Player player = new Player();
     private final WorldGenerator generator = new WorldGenerator(System.currentTimeMillis());
     private final Map<String, Room> rooms = new HashMap<>();
+    private final Map<String, RoomTexturePack> roomTexturePacks = new HashMap<>();
     private final List<String> log = new ArrayList<>();
 
     private int roomX = 0;
@@ -32,94 +33,140 @@ public class Game extends ApplicationAdapter {
     private int playerX = Room.WIDTH / 2;
     private int playerY = Room.HEIGHT / 2;
 
+    private GameState state = GameState.MENU;
+
     private SpriteBatch batch;
     private BitmapFont font;
-
-    private final Map<TileType, Texture> tileTextures = new EnumMap<>(TileType.class);
     private Texture playerTexture;
     private Texture chestClosedTexture;
     private Texture chestOpenedTexture;
-    private Texture monsterTexture;
     private Texture panelTexture;
+    private final Texture[] monsterTextures = new Texture[4];
 
     @Override
     public void create() {
         batch = new SpriteBatch();
-        font = createReadableFont();
+        font = new BitmapFont();
+        font.setColor(Color.WHITE);
 
-        createTextures();
-        addLog("Рогалик: WASD/стрелки — движение, F — бой, E — сундук, Q — использовать предмет");
-        addLog("Tab/Shift+Tab — переключение предметов в инвентаре.");
+        playerTexture = createPlayerTexture();
+        chestClosedTexture = createChestTexture(false);
+        chestOpenedTexture = createChestTexture(true);
+        panelTexture = createSolidTexture(new Color(0.10f, 0.10f, 0.14f, 1f));
+        for (int i = 0; i < monsterTextures.length; i++) {
+            monsterTextures[i] = createMonsterTexture(i);
+        }
+
+        addLog("Welcome! Select map mode in menu.");
     }
 
     @Override
     public void render() {
-        handleInput();
-
-        Gdx.gl.glClearColor(0.08f, 0.08f, 0.12f, 1f);
+        Gdx.gl.glClearColor(0.07f, 0.07f, 0.10f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
+        if (state == GameState.MENU) {
+            handleMenuInput();
+            drawMenu();
+            return;
+        }
+
+        handleInput();
+        drawGame();
+    }
+
+    private void handleMenuInput() {
+        if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1)) {
+            startNewGame(WorldGenerator.GenerationMode.RANDOM);
+        }
+        if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_2)) {
+            startNewGame(WorldGenerator.GenerationMode.PREDEFINED);
+        }
+    }
+
+    private void startNewGame(WorldGenerator.GenerationMode mode) {
+        generator.setMode(mode);
+        rooms.clear();
+        roomTexturePacks.clear();
+        log.clear();
+        roomX = 0;
+        roomY = 0;
+        playerX = Room.WIDTH / 2;
+        playerY = Room.HEIGHT / 2;
+        state = GameState.PLAYING;
+        addLog("Mode: " + mode);
+        addLog("Controls: WASD/Arrows move, F fight, E open chest, Q use consumable.");
+        addLog("Inventory: TAB / SHIFT+TAB.");
+    }
+
+    private void drawMenu() {
+        batch.begin();
+        font.draw(batch, "ROGUELIKE", 420, 500);
+        font.draw(batch, "1 - Random generation", 360, 450);
+        font.draw(batch, "2 - Predefined templates from files", 360, 420);
+        font.draw(batch, "(No binary assets; textures generated in runtime)", 300, 380);
+        batch.end();
+    }
+
+    private void drawGame() {
         Room room = currentRoom();
+        RoomTexturePack textures = currentRoomTextures();
 
         batch.begin();
 
         for (int y = 0; y < Room.HEIGHT; y++) {
             for (int x = 0; x < Room.WIDTH; x++) {
-                Texture tileTexture = tileTextures.get(room.tile(x, y));
-                batch.draw(tileTexture, x * TILE_SIZE, y * TILE_SIZE);
+                Texture tileTexture = textures.tileTextures.get(room.tile(x, y));
+                batch.draw(tileTexture, x * TILE_RENDER_SIZE, y * TILE_RENDER_SIZE, TILE_RENDER_SIZE, TILE_RENDER_SIZE);
             }
         }
 
-        Chest chest = room.chest();
-        if (chest != null) {
+        for (Chest chest : room.chests()) {
             Texture chestTexture = chest.isOpened() ? chestOpenedTexture : chestClosedTexture;
-            batch.draw(chestTexture, chest.x() * TILE_SIZE, chest.y() * TILE_SIZE);
+            batch.draw(chestTexture, chest.x() * TILE_RENDER_SIZE, chest.y() * TILE_RENDER_SIZE, TILE_RENDER_SIZE, TILE_RENDER_SIZE);
         }
 
-        if (room.monster() != null && room.monster().isAlive()) {
-            int monsterX = Room.WIDTH / 2 + 4;
-            int monsterY = Room.HEIGHT / 2 + 3;
-            batch.draw(monsterTexture, monsterX * TILE_SIZE, monsterY * TILE_SIZE);
+        for (MonsterInstance monster : room.monsters()) {
+            if (monster.isAlive()) {
+                Texture mTexture = monsterTextures[Math.floorMod(monster.textureVariant(), monsterTextures.length)];
+                batch.draw(mTexture, monster.x() * TILE_RENDER_SIZE, monster.y() * TILE_RENDER_SIZE, TILE_RENDER_SIZE, TILE_RENDER_SIZE);
+            }
         }
 
-        batch.draw(playerTexture, playerX * TILE_SIZE, playerY * TILE_SIZE);
+        batch.draw(playerTexture, playerX * TILE_RENDER_SIZE, playerY * TILE_RENDER_SIZE, TILE_RENDER_SIZE, TILE_RENDER_SIZE);
 
-        int panelX = Room.WIDTH * TILE_SIZE + 8;
-        batch.setColor(1f, 1f, 1f, 0.95f);
-        batch.draw(panelTexture, panelX, 8, 330, 640);
-        batch.setColor(Color.WHITE);
+        int panelX = Room.WIDTH * TILE_RENDER_SIZE + 8;
+        batch.draw(panelTexture, panelX, 8, 340, 640);
 
-        int infoX = Room.WIDTH * TILE_SIZE + 16;
-        int topY = 642;
+        int infoX = Room.WIDTH * TILE_RENDER_SIZE + 16;
+        int topY = 640;
+        font.draw(batch, "Room: [" + roomX + ", " + roomY + "]", infoX, topY);
+        font.draw(batch, "HP: " + player.health() + "  ATK: " + player.attackPower(), infoX, topY - 20);
+        long alive = room.monsters().stream().filter(MonsterInstance::isAlive).count();
+        font.draw(batch, "Monsters alive: " + alive, infoX, topY - 40);
+        font.draw(batch, "Chests: " + room.chests().size(), infoX, topY - 60);
 
-        font.draw(batch, "Комната: [" + roomX + ", " + roomY + "]", infoX, topY);
-        font.draw(batch, "Здоровье: " + player.health() + "  Атака: " + player.attackPower(), infoX, topY - 24);
-        if (room.monster() != null && room.monster().isAlive()) {
-            font.draw(batch, "Монстр: " + room.monster().name() + " HP " + room.monster().health(), infoX, topY - 48);
-        } else {
-            font.draw(batch, "Монстр: нет", infoX, topY - 48);
-        }
+        drawInventory(infoX, topY - 90);
 
-        drawInventory(infoX, topY - 78);
-
-        int lineY = 224;
-        font.draw(batch, "Лог:", infoX, lineY);
-        lineY -= 18;
+        int logY = 220;
+        font.draw(batch, "Log:", infoX, logY);
+        logY -= 16;
         for (String s : log) {
-            font.draw(batch, s, infoX, lineY);
-            lineY -= 16;
-            if (lineY < 20) {
+            font.draw(batch, s, infoX, logY);
+            logY -= 16;
+            if (logY < 20) {
                 break;
             }
         }
+
         batch.end();
     }
 
     private void drawInventory(int infoX, int topY) {
         List<Item> inventory = player.inventory();
-        font.draw(batch, "Инвентарь (Tab / Shift+Tab):", infoX, topY);
+        font.draw(batch, "Inventory:", infoX, topY);
         if (inventory.isEmpty()) {
-            font.draw(batch, "  (пусто)", infoX, topY - 18);
+            font.draw(batch, "  (empty)", infoX, topY - 16);
             return;
         }
 
@@ -135,202 +182,28 @@ public class Game extends ApplicationAdapter {
             Item item = inventory.get(index);
             String marker = index == selected ? "> " : "  ";
             String line = marker + (index + 1) + ") " + compactItemText(item);
-            font.draw(batch, line, infoX, topY - 18 - (i * 16));
+            font.draw(batch, line, infoX, topY - 16 - (i * 15));
         }
     }
 
     private String compactItemText(Item item) {
         return switch (item.type()) {
-            case WEAPON -> item.name() + " [оружие +" + item.power() + "]";
-            case CONSUMABLE -> item.name() + " [лечение " + item.power() + "]";
-            case TREASURE -> item.name() + " [ценность " + item.power() + "]";
+            case WEAPON -> item.name() + " [+" + item.power() + " atk]";
+            case CONSUMABLE -> item.name() + " [heal " + item.power() + "]";
+            case TREASURE -> item.name() + " [value " + item.power() + "]";
         };
-    }
-
-    private BitmapFont createReadableFont() {
-        String[] fontCandidates = {
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                "/usr/share/fonts/truetype/freefont/FreeSans.ttf"
-        };
-
-        for (String path : fontCandidates) {
-            if (new java.io.File(path).exists()) {
-                FreeTypeFontGenerator generator = new FreeTypeFontGenerator(Gdx.files.absolute(path));
-                FreeTypeFontGenerator.FreeTypeFontParameter parameter = new FreeTypeFontGenerator.FreeTypeFontParameter();
-                parameter.size = 14;
-                parameter.characters = FreeTypeFontGenerator.DEFAULT_CHARS +
-                        "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ" +
-                        "абвгдеёжзийклмнопрстуфхцчшщъыьэюя" +
-                        "—«»№";
-                BitmapFont generated = generator.generateFont(parameter);
-                generator.dispose();
-                generated.setColor(Color.WHITE);
-                return generated;
-            }
-        }
-
-        BitmapFont fallback = new BitmapFont();
-        fallback.setColor(Color.WHITE);
-        return fallback;
-    }
-
-    private void createTextures() {
-        tileTextures.put(TileType.FLOOR, createFloorTexture());
-        tileTextures.put(TileType.WALL, createWallTexture());
-        tileTextures.put(TileType.TRAP, createTrapTexture());
-        Texture doorTexture = createDoorTexture();
-        tileTextures.put(TileType.DOOR_NORTH, doorTexture);
-        tileTextures.put(TileType.DOOR_SOUTH, doorTexture);
-        tileTextures.put(TileType.DOOR_EAST, doorTexture);
-        tileTextures.put(TileType.DOOR_WEST, doorTexture);
-
-        playerTexture = createPlayerTexture();
-        monsterTexture = createMonsterTexture();
-        chestClosedTexture = createChestTexture(false);
-        chestOpenedTexture = createChestTexture(true);
-        panelTexture = createSolidTexture(new Color(0.12f, 0.12f, 0.16f, 1f));
-
-        exportTexturePngs();
-    }
-
-    private Texture createFloorTexture() {
-        Pixmap pixmap = new Pixmap(TILE_SIZE, TILE_SIZE, Pixmap.Format.RGBA8888);
-        pixmap.setColor(0.28f, 0.28f, 0.33f, 1f);
-        pixmap.fill();
-        pixmap.setColor(0.36f, 0.36f, 0.42f, 1f);
-        pixmap.fillRectangle(1, 1, 14, 14);
-        pixmap.setColor(0.24f, 0.24f, 0.28f, 1f);
-        for (int y = 2; y < TILE_SIZE - 2; y += 4) {
-            pixmap.drawLine(2, y, TILE_SIZE - 3, y);
-        }
-        return textureFrom(pixmap);
-    }
-
-    private Texture createWallTexture() {
-        Pixmap pixmap = new Pixmap(TILE_SIZE, TILE_SIZE, Pixmap.Format.RGBA8888);
-        pixmap.setColor(0.14f, 0.14f, 0.17f, 1f);
-        pixmap.fill();
-        pixmap.setColor(0.2f, 0.2f, 0.24f, 1f);
-        pixmap.fillRectangle(1, 1, 14, 14);
-        pixmap.setColor(0.08f, 0.08f, 0.1f, 1f);
-        for (int by = 2; by < TILE_SIZE - 2; by += 4) {
-            for (int bx = 2; bx < TILE_SIZE - 2; bx += 6) {
-                pixmap.fillRectangle(bx, by, 4, 2);
-            }
-        }
-        return textureFrom(pixmap);
-    }
-
-    private Texture createTrapTexture() {
-        Pixmap pixmap = new Pixmap(TILE_SIZE, TILE_SIZE, Pixmap.Format.RGBA8888);
-        pixmap.setColor(0.26f, 0.08f, 0.08f, 1f);
-        pixmap.fill();
-        pixmap.setColor(0.76f, 0.15f, 0.15f, 1f);
-        for (int x = 1; x < TILE_SIZE; x += 2) {
-            int endX = Math.min(TILE_SIZE - 1, x + 2);
-            pixmap.drawLine(x, 0, endX, TILE_SIZE - 1);
-        }
-        pixmap.setColor(0.95f, 0.8f, 0.2f, 1f);
-        pixmap.fillRectangle(7, 7, 2, 2);
-        return textureFrom(pixmap);
-    }
-
-    private Texture createDoorTexture() {
-        Pixmap pixmap = new Pixmap(TILE_SIZE, TILE_SIZE, Pixmap.Format.RGBA8888);
-        pixmap.setColor(0.35f, 0.2f, 0.07f, 1f);
-        pixmap.fill();
-        pixmap.setColor(0.5f, 0.32f, 0.14f, 1f);
-        pixmap.fillRectangle(2, 1, 12, 14);
-        pixmap.setColor(0.72f, 0.52f, 0.18f, 1f);
-        pixmap.fillRectangle(11, 7, 2, 2);
-        return textureFrom(pixmap);
-    }
-
-    private Texture createPlayerTexture() {
-        Pixmap pixmap = new Pixmap(TILE_SIZE, TILE_SIZE, Pixmap.Format.RGBA8888);
-        pixmap.setColor(0f, 0f, 0f, 0f);
-        pixmap.fill();
-        pixmap.setColor(0.12f, 0.82f, 0.2f, 1f);
-        pixmap.fillRectangle(4, 3, 8, 9);
-        pixmap.setColor(0.06f, 0.58f, 0.11f, 1f);
-        pixmap.fillRectangle(5, 12, 6, 3);
-        pixmap.setColor(0.92f, 0.92f, 0.92f, 1f);
-        pixmap.fillRectangle(6, 8, 1, 1);
-        pixmap.fillRectangle(9, 8, 1, 1);
-        return textureFrom(pixmap);
-    }
-
-    private Texture createMonsterTexture() {
-        Pixmap pixmap = new Pixmap(TILE_SIZE, TILE_SIZE, Pixmap.Format.RGBA8888);
-        pixmap.setColor(0f, 0f, 0f, 0f);
-        pixmap.fill();
-        pixmap.setColor(0.72f, 0.14f, 0.2f, 1f);
-        pixmap.fillRectangle(3, 3, 10, 10);
-        pixmap.setColor(0.95f, 0.9f, 0.9f, 1f);
-        pixmap.fillRectangle(5, 8, 2, 2);
-        pixmap.fillRectangle(9, 8, 2, 2);
-        return textureFrom(pixmap);
-    }
-
-    private Texture createChestTexture(boolean opened) {
-        Pixmap pixmap = new Pixmap(TILE_SIZE, TILE_SIZE, Pixmap.Format.RGBA8888);
-        pixmap.setColor(0f, 0f, 0f, 0f);
-        pixmap.fill();
-        pixmap.setColor(0.4f, 0.23f, 0.08f, 1f);
-        pixmap.fillRectangle(2, 3, 12, 10);
-        pixmap.setColor(0.62f, 0.38f, 0.16f, 1f);
-        if (opened) {
-            pixmap.fillRectangle(2, 11, 12, 2);
-            pixmap.fillRectangle(2, 6, 12, 2);
-        } else {
-            pixmap.fillRectangle(2, 10, 12, 3);
-        }
-        pixmap.setColor(0.9f, 0.74f, 0.22f, 1f);
-        pixmap.fillRectangle(7, 7, 2, 2);
-        return textureFrom(pixmap);
-    }
-
-    private Texture createSolidTexture(Color color) {
-        Pixmap pixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
-        pixmap.setColor(color);
-        pixmap.fill();
-        return textureFrom(pixmap);
-    }
-
-    private Texture textureFrom(Pixmap pixmap) {
-        Texture texture = new Texture(pixmap);
-        pixmap.dispose();
-        return texture;
-    }
-
-    private void exportTexturePngs() {
-        savePng("floor", tileTextures.get(TileType.FLOOR));
-        savePng("wall", tileTextures.get(TileType.WALL));
-        savePng("trap", tileTextures.get(TileType.TRAP));
-        savePng("door", tileTextures.get(TileType.DOOR_NORTH));
-        savePng("player", playerTexture);
-        savePng("monster", monsterTexture);
-        savePng("chest_closed", chestClosedTexture);
-        savePng("chest_opened", chestOpenedTexture);
-    }
-
-    private void savePng(String name, Texture texture) {
-        try {
-            var data = texture.getTextureData();
-            if (!data.isPrepared()) {
-                data.prepare();
-            }
-            Pixmap pixmap = data.consumePixmap();
-            PixmapIO.writePNG(Gdx.files.local("generated-textures/" + name + ".png"), pixmap);
-            if (data.disposePixmap()) {
-                pixmap.dispose();
-            }
-        } catch (Exception ignored) {
-        }
     }
 
     private void handleInput() {
         if (!player.isAlive()) {
+            if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
+                state = GameState.MENU;
+            }
+            return;
+        }
+
+        if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
+            state = GameState.MENU;
             return;
         }
 
@@ -363,13 +236,7 @@ public class Game extends ApplicationAdapter {
             if (!used) {
                 used = player.usePotionIfAny();
             }
-            addLog(used ? "Использован лечебный предмет." : "Лечебных предметов нет.");
-        }
-        if (Gdx.input.isKeyJustPressed(Input.Keys.F12)) {
-            Pixmap screenshot = ScreenUtils.getFrameBufferPixmap(0, 0, Gdx.graphics.getBackBufferWidth(), Gdx.graphics.getBackBufferHeight());
-            PixmapIO.writePNG(Gdx.files.local("generated-textures/screenshot.png"), screenshot);
-            screenshot.dispose();
-            addLog("Скриншот сохранён в generated-textures/screenshot.png");
+            addLog(used ? "Consumable used." : "No consumables available.");
         }
     }
 
@@ -391,89 +258,209 @@ public class Game extends ApplicationAdapter {
             roomY += 1;
             playerX = Room.WIDTH / 2;
             playerY = 1;
-            addLog("Переход в северную комнату.");
+            addLog("Moved to north room.");
             return;
         }
         if (target == TileType.DOOR_SOUTH) {
             roomY -= 1;
             playerX = Room.WIDTH / 2;
             playerY = Room.HEIGHT - 2;
-            addLog("Переход в южную комнату.");
+            addLog("Moved to south room.");
             return;
         }
         if (target == TileType.DOOR_EAST) {
             roomX += 1;
             playerX = 1;
             playerY = Room.HEIGHT / 2;
-            addLog("Переход в восточную комнату.");
+            addLog("Moved to east room.");
             return;
         }
         if (target == TileType.DOOR_WEST) {
             roomX -= 1;
             playerX = Room.WIDTH - 2;
             playerY = Room.HEIGHT / 2;
-            addLog("Переход в западную комнату.");
+            addLog("Moved to west room.");
             return;
         }
 
         playerX = nx;
         playerY = ny;
-        if (target == TileType.TRAP) {
-            player.takeDamage(8);
-            addLog("Ловушка! -8 HP. Текущее HP: " + player.health());
-            if (!player.isAlive()) {
-                addLog("ИГРА ОКОНЧЕНА");
-            }
-        }
     }
 
     private void fight() {
         Room room = currentRoom();
-        Monster monster = room.monster();
-        if (monster == null || !monster.isAlive()) {
-            addLog("Монстра рядом нет.");
+        MonsterInstance target = nearestAdjacentMonster(room);
+        if (target == null) {
+            addLog("No monster nearby.");
             return;
         }
 
         int playerDamage = player.attackPower();
-        monster.takeDamage(playerDamage);
-        addLog("Вы нанесли " + playerDamage + " урона монстру " + monster.name() + ".");
-        if (!monster.isAlive()) {
-            addLog("Монстр повержен.");
+        target.monster().takeDamage(playerDamage);
+        addLog("You hit " + target.monster().name() + " for " + playerDamage + ".");
+        if (!target.isAlive()) {
+            addLog(target.monster().name() + " is defeated.");
             return;
         }
 
-        player.takeDamage(monster.attack());
-        addLog(monster.name() + " ударил на " + monster.attack() + ". HP: " + player.health());
+        player.takeDamage(target.monster().attack());
+        addLog(target.monster().name() + " hit back for " + target.monster().attack() + ".");
+        if (!player.isAlive()) {
+            addLog("GAME OVER");
+        }
+    }
+
+    private MonsterInstance nearestAdjacentMonster(Room room) {
+        for (MonsterInstance monster : room.monsters()) {
+            if (!monster.isAlive()) {
+                continue;
+            }
+            int dx = Math.abs(playerX - monster.x());
+            int dy = Math.abs(playerY - monster.y());
+            if (dx <= 1 && dy <= 1) {
+                return monster;
+            }
+        }
+        return null;
     }
 
     private void openChest() {
         Room room = currentRoom();
-        Chest chest = room.chest();
-        if (chest == null) {
-            addLog("Сундука нет.");
-            return;
+        for (Chest chest : room.chests()) {
+            int dx = Math.abs(playerX - chest.x());
+            int dy = Math.abs(playerY - chest.y());
+            if (dx <= 1 && dy <= 1) {
+                List<Item> loot = chest.open();
+                if (loot.isEmpty()) {
+                    addLog("Chest is empty.");
+                    return;
+                }
+                player.addItems(loot);
+                addLog("Loot: " + loot);
+                return;
+            }
         }
-        int dx = Math.abs(playerX - chest.x());
-        int dy = Math.abs(playerY - chest.y());
-        if (dx > 1 || dy > 1) {
-            addLog("Подойдите ближе к сундуку.");
-            return;
-        }
-
-        List<Item> loot = chest.open();
-        if (loot.isEmpty()) {
-            addLog("Сундук пуст.");
-            return;
-        }
-
-        player.addItems(loot);
-        addLog("Лут: " + loot);
+        addLog("No chest nearby.");
     }
 
     private Room currentRoom() {
         String key = roomX + ":" + roomY;
         return rooms.computeIfAbsent(key, ignored -> generator.generate(roomX, roomY));
+    }
+
+    private RoomTexturePack currentRoomTextures() {
+        String key = roomX + ":" + roomY;
+        return roomTexturePacks.computeIfAbsent(key, ignored -> createRoomTexturePack(roomX, roomY));
+    }
+
+    private RoomTexturePack createRoomTexturePack(int x, int y) {
+        int theme = Math.floorMod(x * 17 + y * 37, 4);
+        Color floorA = switch (theme) {
+            case 0 -> new Color(0.32f, 0.30f, 0.36f, 1f);
+            case 1 -> new Color(0.24f, 0.34f, 0.32f, 1f);
+            case 2 -> new Color(0.34f, 0.28f, 0.24f, 1f);
+            default -> new Color(0.22f, 0.26f, 0.34f, 1f);
+        };
+        Color wallA = floorA.cpy().mul(0.55f, 0.55f, 0.55f, 1f);
+        Color doorA = new Color(0.50f, 0.34f, 0.18f, 1f);
+
+        Map<TileType, Texture> tiles = new EnumMap<>(TileType.class);
+        tiles.put(TileType.FLOOR, createTileTexture(floorA, floorA.cpy().mul(1.1f, 1.1f, 1.1f, 1f)));
+        tiles.put(TileType.WALL, createTileTexture(wallA, wallA.cpy().mul(1.2f, 1.2f, 1.2f, 1f)));
+        tiles.put(TileType.TRAP, createTileTexture(new Color(0.3f, 0.1f, 0.1f, 1f), new Color(0.7f, 0.15f, 0.15f, 1f)));
+        Texture door = createDoorTexture(doorA);
+        tiles.put(TileType.DOOR_NORTH, door);
+        tiles.put(TileType.DOOR_SOUTH, door);
+        tiles.put(TileType.DOOR_EAST, door);
+        tiles.put(TileType.DOOR_WEST, door);
+        return new RoomTexturePack(tiles);
+    }
+
+    private Texture createTileTexture(Color base, Color detail) {
+        Pixmap pixmap = new Pixmap(TILE_TEXTURE_SIZE, TILE_TEXTURE_SIZE, Pixmap.Format.RGBA8888);
+        pixmap.setColor(base);
+        pixmap.fill();
+        pixmap.setColor(detail);
+        for (int y = 0; y < TILE_TEXTURE_SIZE; y += 8) {
+            pixmap.drawLine(0, y, TILE_TEXTURE_SIZE - 1, y);
+        }
+        for (int x = 0; x < TILE_TEXTURE_SIZE; x += 8) {
+            pixmap.drawLine(x, 0, x, TILE_TEXTURE_SIZE - 1);
+        }
+        Texture texture = new Texture(pixmap);
+        pixmap.dispose();
+        return texture;
+    }
+
+    private Texture createDoorTexture(Color color) {
+        Pixmap pixmap = new Pixmap(TILE_TEXTURE_SIZE, TILE_TEXTURE_SIZE, Pixmap.Format.RGBA8888);
+        pixmap.setColor(color);
+        pixmap.fillRectangle(8, 4, 48, 56);
+        pixmap.setColor(color.cpy().mul(1.2f, 1.2f, 1.2f, 1f));
+        pixmap.fillRectangle(40, 30, 6, 6);
+        Texture texture = new Texture(pixmap);
+        pixmap.dispose();
+        return texture;
+    }
+
+    private Texture createPlayerTexture() {
+        Pixmap pixmap = new Pixmap(TILE_TEXTURE_SIZE, TILE_TEXTURE_SIZE, Pixmap.Format.RGBA8888);
+        pixmap.setColor(0f, 0f, 0f, 0f);
+        pixmap.fill();
+        pixmap.setColor(0.18f, 0.88f, 0.24f, 1f);
+        pixmap.fillRectangle(16, 12, 32, 36);
+        pixmap.setColor(0.1f, 0.65f, 0.18f, 1f);
+        pixmap.fillRectangle(20, 48, 24, 12);
+        Texture texture = new Texture(pixmap);
+        pixmap.dispose();
+        return texture;
+    }
+
+    private Texture createMonsterTexture(int variant) {
+        Color body = switch (variant) {
+            case 0 -> new Color(0.75f, 0.2f, 0.22f, 1f);
+            case 1 -> new Color(0.2f, 0.7f, 0.28f, 1f);
+            case 2 -> new Color(0.25f, 0.45f, 0.8f, 1f);
+            default -> new Color(0.7f, 0.32f, 0.75f, 1f);
+        };
+        Pixmap pixmap = new Pixmap(TILE_TEXTURE_SIZE, TILE_TEXTURE_SIZE, Pixmap.Format.RGBA8888);
+        pixmap.setColor(0f, 0f, 0f, 0f);
+        pixmap.fill();
+        pixmap.setColor(body);
+        pixmap.fillRectangle(12, 10, 40, 42);
+        pixmap.setColor(Color.WHITE);
+        pixmap.fillRectangle(20, 28, 6, 6);
+        pixmap.fillRectangle(38, 28, 6, 6);
+        Texture texture = new Texture(pixmap);
+        pixmap.dispose();
+        return texture;
+    }
+
+    private Texture createChestTexture(boolean opened) {
+        Pixmap pixmap = new Pixmap(TILE_TEXTURE_SIZE, TILE_TEXTURE_SIZE, Pixmap.Format.RGBA8888);
+        pixmap.setColor(0f, 0f, 0f, 0f);
+        pixmap.fill();
+        pixmap.setColor(0.44f, 0.24f, 0.09f, 1f);
+        pixmap.fillRectangle(8, 14, 48, 40);
+        pixmap.setColor(0.62f, 0.38f, 0.16f, 1f);
+        if (opened) {
+            pixmap.fillRectangle(8, 42, 48, 8);
+            pixmap.fillRectangle(8, 24, 48, 6);
+        } else {
+            pixmap.fillRectangle(8, 40, 48, 12);
+        }
+        Texture texture = new Texture(pixmap);
+        pixmap.dispose();
+        return texture;
+    }
+
+    private Texture createSolidTexture(Color color) {
+        Pixmap pixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
+        pixmap.setColor(color);
+        pixmap.fill();
+        Texture texture = new Texture(pixmap);
+        pixmap.dispose();
+        return texture;
     }
 
     private void addLog(String message) {
@@ -487,13 +474,19 @@ public class Game extends ApplicationAdapter {
     public void dispose() {
         batch.dispose();
         font.dispose();
-        for (Texture texture : tileTextures.values()) {
-            texture.dispose();
-        }
         playerTexture.dispose();
         chestClosedTexture.dispose();
         chestOpenedTexture.dispose();
-        monsterTexture.dispose();
         panelTexture.dispose();
+        for (Texture t : monsterTextures) {
+            t.dispose();
+        }
+        for (RoomTexturePack pack : roomTexturePacks.values()) {
+            for (Texture t : pack.tileTextures.values()) {
+                t.dispose();
+            }
+        }
     }
+
+    private record RoomTexturePack(Map<TileType, Texture> tileTextures) { }
 }
