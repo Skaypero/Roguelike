@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 
 public class Game extends ApplicationAdapter {
-    private static final int TILE_RENDER_SIZE = 16;
+    private static final int TILE_RENDER_SIZE = 22;
     private static final int TILE_TEXTURE_SIZE = 64;
 
     private enum GameState { MENU, PLAYING }
@@ -95,7 +95,8 @@ public class Game extends ApplicationAdapter {
         playerY = Room.HEIGHT / 2;
         state = GameState.PLAYING;
         addLog("Mode: " + mode);
-        addLog("Controls: WASD/Arrows move, F fight, E open chest, Q use consumable.");
+        addLog("Controls: WASD/Arrows move.");
+        addLog("F: fight, E: open chest, Q: use consumable.");
         addLog("Inventory: TAB / SHIFT+TAB.");
     }
 
@@ -104,7 +105,8 @@ public class Game extends ApplicationAdapter {
         font.draw(batch, "ROGUELIKE", 420, 500);
         font.draw(batch, "1 - Random generation", 360, 450);
         font.draw(batch, "2 - Predefined templates from files", 360, 420);
-        font.draw(batch, "(No binary assets; textures generated in runtime)", 300, 380);
+        font.draw(batch, "Textures: 64x64 source, scaled on screen", 320, 380);
+        font.draw(batch, "No binary assets are committed", 360, 352);
         batch.end();
     }
 
@@ -136,10 +138,10 @@ public class Game extends ApplicationAdapter {
         batch.draw(playerTexture, playerX * TILE_RENDER_SIZE, playerY * TILE_RENDER_SIZE, TILE_RENDER_SIZE, TILE_RENDER_SIZE);
 
         int panelX = Room.WIDTH * TILE_RENDER_SIZE + 8;
-        batch.draw(panelTexture, panelX, 8, 340, 640);
+        batch.draw(panelTexture, panelX, 8, 450, 940);
 
         int infoX = Room.WIDTH * TILE_RENDER_SIZE + 16;
-        int topY = 640;
+        int topY = 930;
         font.draw(batch, "Room: [" + roomX + ", " + roomY + "]", infoX, topY);
         font.draw(batch, "HP: " + player.health() + "  ATK: " + player.attackPower(), infoX, topY - 20);
         long alive = room.monsters().stream().filter(MonsterInstance::isAlive).count();
@@ -148,7 +150,7 @@ public class Game extends ApplicationAdapter {
 
         drawInventory(infoX, topY - 90);
 
-        int logY = 220;
+        int logY = 360;
         font.draw(batch, "Log:", infoX, logY);
         logY -= 16;
         for (String s : log) {

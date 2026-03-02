@@ -1,41 +1,42 @@
-# Roguelike on Java + libGDX
+# Roguelike на Java + libGDX
 
-A simple room-based roguelike using **libGDX**.
+Небольшой roguelike с комнатами, меню старта и генерацией текстур во время запуска (без бинарных ассетов в репозитории).
 
-## Features
+## Что есть в игре
 
-- 40x40 tile rooms.
-- Main menu with generation mode selection:
-  - `1` — random map generation,
-  - `2` — predefined room templates from text files in `src/main/resources/maps`.
-- Room content:
-  - walls and doors,
-  - multiple monsters,
-  - multiple chests,
-  - no traps.
-- Inventory UI and item selection:
-  - `Tab` / `Shift+Tab` to select item,
-  - selected weapon affects attack,
-  - `Q` uses selected consumable.
-- Runtime-generated textures (no binary assets committed):
-  - 64x64 source textures for tiles/entities,
-  - room-specific visual themes.
+- Комнаты размером **40x40** клеток.
+- Главное меню:
+  - `1` — случайная генерация,
+  - `2` — заранее подготовленные шаблоны комнат из `src/main/resources/maps`.
+- В комнатах:
+  - стены и двери,
+  - несколько монстров,
+  - несколько сундуков,
+  - ловушек нет.
+- Инвентарь с выбором предмета:
+  - `Tab` / `Shift+Tab` — переключение,
+  - выбранное оружие влияет на урон,
+  - `Q` использует расходник.
+- Текстуры генерируются в рантайме:
+  - исходный размер тайла **64x64**,
+  - увеличенный масштаб отрисовки на экране для лучшей читаемости,
+  - тема текстур зависит от координат комнаты.
 
-## Controls
+## Управление
 
-- `W/A/S/D` or arrows — move
-- `F` — fight adjacent monster
-- `E` — open nearby chest
-- `Q` — use consumable
-- `Esc` — back to menu
+- `W/A/S/D` или стрелки — движение
+- `F` — удар по ближайшему монстру
+- `E` — открыть ближайший сундук
+- `Q` — использовать расходник
+- `Esc` — вернуться в меню
 
-## Run
+## Запуск
 
 ```bash
 mvn exec:java
 ```
 
-## Tests
+## Тесты
 
 ```bash
 mvn test

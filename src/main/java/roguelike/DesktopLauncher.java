@@ -7,7 +7,7 @@ public class DesktopLauncher {
     public static void main(String[] args) {
         Lwjgl3ApplicationConfiguration config = new Lwjgl3ApplicationConfiguration();
         config.setTitle("Roguelike libGDX");
-        config.setWindowedMode(980, 660);
+        config.setWindowedMode(1420, 980);
         config.useVsync(true);
         new Lwjgl3Application(new Game(), config);
     }
