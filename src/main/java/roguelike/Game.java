@@ -6,9 +6,12 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Pixmap;
+import com.badlogic.gdx.graphics.PixmapIO;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator;
+import com.badlogic.gdx.utils.ScreenUtils;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -42,11 +45,11 @@ public class Game extends ApplicationAdapter {
     @Override
     public void create() {
         batch = new SpriteBatch();
-        font = new BitmapFont();
-        font.setColor(Color.WHITE);
+        font = createReadableFont();
 
         createTextures();
-        addLog("Рогалик: WASD/стрелки — движение, F — бой, E — сундук, Q — зелье");
+        addLog("Рогалик: WASD/стрелки — движение, F — бой, E — сундук, Q — использовать предмет");
+        addLog("Tab/Shift+Tab — переключение предметов в инвентаре.");
     }
 
     @Override
@@ -82,12 +85,12 @@ public class Game extends ApplicationAdapter {
         batch.draw(playerTexture, playerX * TILE_SIZE, playerY * TILE_SIZE);
 
         int panelX = Room.WIDTH * TILE_SIZE + 8;
-        batch.setColor(1f, 1f, 1f, 0.9f);
-        batch.draw(panelTexture, panelX, 8, 320, 620);
+        batch.setColor(1f, 1f, 1f, 0.95f);
+        batch.draw(panelTexture, panelX, 8, 330, 640);
         batch.setColor(Color.WHITE);
 
         int infoX = Room.WIDTH * TILE_SIZE + 16;
-        int topY = 610;
+        int topY = 642;
 
         font.draw(batch, "Комната: [" + roomX + ", " + roomY + "]", infoX, topY);
         font.draw(batch, "Здоровье: " + player.health() + "  Атака: " + player.attackPower(), infoX, topY - 24);
@@ -96,19 +99,84 @@ public class Game extends ApplicationAdapter {
         } else {
             font.draw(batch, "Монстр: нет", infoX, topY - 48);
         }
-        font.draw(batch, "Инвентарь: " + player.inventory().size(), infoX, topY - 72);
 
-        int lineY = topY - 120;
+        drawInventory(infoX, topY - 78);
+
+        int lineY = 224;
+        font.draw(batch, "Лог:", infoX, lineY);
+        lineY -= 18;
         for (String s : log) {
             font.draw(batch, s, infoX, lineY);
-            lineY -= 20;
+            lineY -= 16;
+            if (lineY < 20) {
+                break;
+            }
         }
         batch.end();
     }
 
+    private void drawInventory(int infoX, int topY) {
+        List<Item> inventory = player.inventory();
+        font.draw(batch, "Инвентарь (Tab / Shift+Tab):", infoX, topY);
+        if (inventory.isEmpty()) {
+            font.draw(batch, "  (пусто)", infoX, topY - 18);
+            return;
+        }
+
+        int selected = player.selectedItemIndex();
+        int maxLines = 9;
+        int start = Math.max(0, selected - 4);
+        if (start + maxLines > inventory.size()) {
+            start = Math.max(0, inventory.size() - maxLines);
+        }
+
+        for (int i = 0; i < maxLines && start + i < inventory.size(); i++) {
+            int index = start + i;
+            Item item = inventory.get(index);
+            String marker = index == selected ? "> " : "  ";
+            String line = marker + (index + 1) + ") " + compactItemText(item);
+            font.draw(batch, line, infoX, topY - 18 - (i * 16));
+        }
+    }
+
+    private String compactItemText(Item item) {
+        return switch (item.type()) {
+            case WEAPON -> item.name() + " [оружие +" + item.power() + "]";
+            case CONSUMABLE -> item.name() + " [лечение " + item.power() + "]";
+            case TREASURE -> item.name() + " [ценность " + item.power() + "]";
+        };
+    }
+
+    private BitmapFont createReadableFont() {
+        String[] fontCandidates = {
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/freefont/FreeSans.ttf"
+        };
+
+        for (String path : fontCandidates) {
+            if (new java.io.File(path).exists()) {
+                FreeTypeFontGenerator generator = new FreeTypeFontGenerator(Gdx.files.absolute(path));
+                FreeTypeFontGenerator.FreeTypeFontParameter parameter = new FreeTypeFontGenerator.FreeTypeFontParameter();
+                parameter.size = 14;
+                parameter.characters = FreeTypeFontGenerator.DEFAULT_CHARS +
+                        "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ" +
+                        "абвгдеёжзийклмнопрстуфхцчшщъыьэюя" +
+                        "—«»№";
+                BitmapFont generated = generator.generateFont(parameter);
+                generator.dispose();
+                generated.setColor(Color.WHITE);
+                return generated;
+            }
+        }
+
+        BitmapFont fallback = new BitmapFont();
+        fallback.setColor(Color.WHITE);
+        return fallback;
+    }
+
     private void createTextures() {
-        tileTextures.put(TileType.FLOOR, createTileTexture(new Color(0.32f, 0.32f, 0.36f, 1f), new Color(0.28f, 0.28f, 0.32f, 1f)));
-        tileTextures.put(TileType.WALL, createTileTexture(new Color(0.14f, 0.14f, 0.16f, 1f), new Color(0.18f, 0.18f, 0.2f, 1f)));
+        tileTextures.put(TileType.FLOOR, createFloorTexture());
+        tileTextures.put(TileType.WALL, createWallTexture());
         tileTextures.put(TileType.TRAP, createTrapTexture());
         Texture doorTexture = createDoorTexture();
         tileTextures.put(TileType.DOOR_NORTH, doorTexture);
@@ -120,108 +188,145 @@ public class Game extends ApplicationAdapter {
         monsterTexture = createMonsterTexture();
         chestClosedTexture = createChestTexture(false);
         chestOpenedTexture = createChestTexture(true);
-        panelTexture = createSolidTexture(new Color(0.2f, 0.2f, 0.2f, 1f));
+        panelTexture = createSolidTexture(new Color(0.12f, 0.12f, 0.16f, 1f));
+
+        exportTexturePngs();
     }
 
-    private Texture createTileTexture(Color base, Color detail) {
+    private Texture createFloorTexture() {
         Pixmap pixmap = new Pixmap(TILE_SIZE, TILE_SIZE, Pixmap.Format.RGBA8888);
-        pixmap.setColor(base);
+        pixmap.setColor(0.28f, 0.28f, 0.33f, 1f);
         pixmap.fill();
+        pixmap.setColor(0.36f, 0.36f, 0.42f, 1f);
+        pixmap.fillRectangle(1, 1, 14, 14);
+        pixmap.setColor(0.24f, 0.24f, 0.28f, 1f);
+        for (int y = 2; y < TILE_SIZE - 2; y += 4) {
+            pixmap.drawLine(2, y, TILE_SIZE - 3, y);
+        }
+        return textureFrom(pixmap);
+    }
 
-        pixmap.setColor(detail);
-        for (int y = 0; y < TILE_SIZE; y++) {
-            for (int x = 0; x < TILE_SIZE; x++) {
-                if ((x + y) % 4 == 0) {
-                    pixmap.drawPixel(x, y);
-                }
+    private Texture createWallTexture() {
+        Pixmap pixmap = new Pixmap(TILE_SIZE, TILE_SIZE, Pixmap.Format.RGBA8888);
+        pixmap.setColor(0.14f, 0.14f, 0.17f, 1f);
+        pixmap.fill();
+        pixmap.setColor(0.2f, 0.2f, 0.24f, 1f);
+        pixmap.fillRectangle(1, 1, 14, 14);
+        pixmap.setColor(0.08f, 0.08f, 0.1f, 1f);
+        for (int by = 2; by < TILE_SIZE - 2; by += 4) {
+            for (int bx = 2; bx < TILE_SIZE - 2; bx += 6) {
+                pixmap.fillRectangle(bx, by, 4, 2);
             }
         }
-
-        Texture texture = new Texture(pixmap);
-        pixmap.dispose();
-        return texture;
+        return textureFrom(pixmap);
     }
 
     private Texture createTrapTexture() {
         Pixmap pixmap = new Pixmap(TILE_SIZE, TILE_SIZE, Pixmap.Format.RGBA8888);
-        pixmap.setColor(0.28f, 0.12f, 0.12f, 1f);
+        pixmap.setColor(0.26f, 0.08f, 0.08f, 1f);
         pixmap.fill();
-        pixmap.setColor(0.86f, 0.2f, 0.2f, 1f);
-        for (int x = 1; x < TILE_SIZE; x += 3) {
-            pixmap.drawLine(x, 0, TILE_SIZE - 1 - x / 2, TILE_SIZE - 1);
+        pixmap.setColor(0.76f, 0.15f, 0.15f, 1f);
+        for (int x = 1; x < TILE_SIZE; x += 2) {
+            int endX = Math.min(TILE_SIZE - 1, x + 2);
+            pixmap.drawLine(x, 0, endX, TILE_SIZE - 1);
         }
-        Texture texture = new Texture(pixmap);
-        pixmap.dispose();
-        return texture;
+        pixmap.setColor(0.95f, 0.8f, 0.2f, 1f);
+        pixmap.fillRectangle(7, 7, 2, 2);
+        return textureFrom(pixmap);
     }
 
     private Texture createDoorTexture() {
         Pixmap pixmap = new Pixmap(TILE_SIZE, TILE_SIZE, Pixmap.Format.RGBA8888);
-        pixmap.setColor(0.40f, 0.27f, 0.12f, 1f);
+        pixmap.setColor(0.35f, 0.2f, 0.07f, 1f);
         pixmap.fill();
-        pixmap.setColor(0.55f, 0.38f, 0.2f, 1f);
-        pixmap.fillRectangle(2, 1, TILE_SIZE - 4, TILE_SIZE - 2);
-        pixmap.setColor(0.85f, 0.72f, 0.3f, 1f);
-        pixmap.fillRectangle(TILE_SIZE - 5, TILE_SIZE / 2 - 1, 2, 2);
-        Texture texture = new Texture(pixmap);
-        pixmap.dispose();
-        return texture;
+        pixmap.setColor(0.5f, 0.32f, 0.14f, 1f);
+        pixmap.fillRectangle(2, 1, 12, 14);
+        pixmap.setColor(0.72f, 0.52f, 0.18f, 1f);
+        pixmap.fillRectangle(11, 7, 2, 2);
+        return textureFrom(pixmap);
     }
 
     private Texture createPlayerTexture() {
         Pixmap pixmap = new Pixmap(TILE_SIZE, TILE_SIZE, Pixmap.Format.RGBA8888);
         pixmap.setColor(0f, 0f, 0f, 0f);
         pixmap.fill();
-        pixmap.setColor(0.2f, 0.9f, 0.2f, 1f);
+        pixmap.setColor(0.12f, 0.82f, 0.2f, 1f);
         pixmap.fillRectangle(4, 3, 8, 9);
-        pixmap.setColor(0.1f, 0.6f, 0.1f, 1f);
+        pixmap.setColor(0.06f, 0.58f, 0.11f, 1f);
         pixmap.fillRectangle(5, 12, 6, 3);
-        Texture texture = new Texture(pixmap);
-        pixmap.dispose();
-        return texture;
+        pixmap.setColor(0.92f, 0.92f, 0.92f, 1f);
+        pixmap.fillRectangle(6, 8, 1, 1);
+        pixmap.fillRectangle(9, 8, 1, 1);
+        return textureFrom(pixmap);
     }
 
     private Texture createMonsterTexture() {
         Pixmap pixmap = new Pixmap(TILE_SIZE, TILE_SIZE, Pixmap.Format.RGBA8888);
         pixmap.setColor(0f, 0f, 0f, 0f);
         pixmap.fill();
-        pixmap.setColor(0.8f, 0.2f, 0.25f, 1f);
+        pixmap.setColor(0.72f, 0.14f, 0.2f, 1f);
         pixmap.fillRectangle(3, 3, 10, 10);
-        pixmap.setColor(0.95f, 0.95f, 0.95f, 1f);
+        pixmap.setColor(0.95f, 0.9f, 0.9f, 1f);
         pixmap.fillRectangle(5, 8, 2, 2);
         pixmap.fillRectangle(9, 8, 2, 2);
-        Texture texture = new Texture(pixmap);
-        pixmap.dispose();
-        return texture;
+        return textureFrom(pixmap);
     }
 
     private Texture createChestTexture(boolean opened) {
         Pixmap pixmap = new Pixmap(TILE_SIZE, TILE_SIZE, Pixmap.Format.RGBA8888);
         pixmap.setColor(0f, 0f, 0f, 0f);
         pixmap.fill();
-        pixmap.setColor(0.45f, 0.28f, 0.12f, 1f);
-        pixmap.fillRectangle(2, 2, 12, 11);
-        pixmap.setColor(0.66f, 0.43f, 0.19f, 1f);
+        pixmap.setColor(0.4f, 0.23f, 0.08f, 1f);
+        pixmap.fillRectangle(2, 3, 12, 10);
+        pixmap.setColor(0.62f, 0.38f, 0.16f, 1f);
         if (opened) {
-            pixmap.fillRectangle(2, 11, 12, 3);
+            pixmap.fillRectangle(2, 11, 12, 2);
             pixmap.fillRectangle(2, 6, 12, 2);
         } else {
-            pixmap.fillRectangle(2, 10, 12, 4);
+            pixmap.fillRectangle(2, 10, 12, 3);
         }
-        pixmap.setColor(0.85f, 0.72f, 0.3f, 1f);
-        pixmap.fillRectangle(7, 6, 2, 3);
-        Texture texture = new Texture(pixmap);
-        pixmap.dispose();
-        return texture;
+        pixmap.setColor(0.9f, 0.74f, 0.22f, 1f);
+        pixmap.fillRectangle(7, 7, 2, 2);
+        return textureFrom(pixmap);
     }
 
     private Texture createSolidTexture(Color color) {
         Pixmap pixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
         pixmap.setColor(color);
         pixmap.fill();
+        return textureFrom(pixmap);
+    }
+
+    private Texture textureFrom(Pixmap pixmap) {
         Texture texture = new Texture(pixmap);
         pixmap.dispose();
         return texture;
+    }
+
+    private void exportTexturePngs() {
+        savePng("floor", tileTextures.get(TileType.FLOOR));
+        savePng("wall", tileTextures.get(TileType.WALL));
+        savePng("trap", tileTextures.get(TileType.TRAP));
+        savePng("door", tileTextures.get(TileType.DOOR_NORTH));
+        savePng("player", playerTexture);
+        savePng("monster", monsterTexture);
+        savePng("chest_closed", chestClosedTexture);
+        savePng("chest_opened", chestOpenedTexture);
+    }
+
+    private void savePng(String name, Texture texture) {
+        try {
+            var data = texture.getTextureData();
+            if (!data.isPrepared()) {
+                data.prepare();
+            }
+            Pixmap pixmap = data.consumePixmap();
+            PixmapIO.writePNG(Gdx.files.local("generated-textures/" + name + ".png"), pixmap);
+            if (data.disposePixmap()) {
+                pixmap.dispose();
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     private void handleInput() {
@@ -239,6 +344,14 @@ public class Game extends ApplicationAdapter {
             moveBy(1, 0);
         }
 
+        if (Gdx.input.isKeyJustPressed(Input.Keys.TAB)) {
+            if (Gdx.input.isKeyPressed(Input.Keys.SHIFT_LEFT) || Gdx.input.isKeyPressed(Input.Keys.SHIFT_RIGHT)) {
+                player.selectPreviousItem();
+            } else {
+                player.selectNextItem();
+            }
+        }
+
         if (Gdx.input.isKeyJustPressed(Input.Keys.F)) {
             fight();
         }
@@ -246,8 +359,17 @@ public class Game extends ApplicationAdapter {
             openChest();
         }
         if (Gdx.input.isKeyJustPressed(Input.Keys.Q)) {
-            boolean used = player.usePotionIfAny();
-            addLog(used ? "Использовано лечение." : "Лечебных предметов нет.");
+            boolean used = player.useSelectedConsumable();
+            if (!used) {
+                used = player.usePotionIfAny();
+            }
+            addLog(used ? "Использован лечебный предмет." : "Лечебных предметов нет.");
+        }
+        if (Gdx.input.isKeyJustPressed(Input.Keys.F12)) {
+            Pixmap screenshot = ScreenUtils.getFrameBufferPixmap(0, 0, Gdx.graphics.getBackBufferWidth(), Gdx.graphics.getBackBufferHeight());
+            PixmapIO.writePNG(Gdx.files.local("generated-textures/screenshot.png"), screenshot);
+            screenshot.dispose();
+            addLog("Скриншот сохранён в generated-textures/screenshot.png");
         }
     }
 
@@ -356,7 +478,7 @@ public class Game extends ApplicationAdapter {
 
     private void addLog(String message) {
         log.add(0, message);
-        if (log.size() > 20) {
+        if (log.size() > 12) {
             log.remove(log.size() - 1);
         }
     }

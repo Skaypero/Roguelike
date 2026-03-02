@@ -43,24 +43,8 @@ public class WorldGenerator {
         tiles[westDoorY][0] = TileType.DOOR_WEST;
         tiles[eastDoorY][Room.WIDTH - 1] = TileType.DOOR_EAST;
 
-        int interiorWalls = 45 + random.nextInt(30);
-        for (int i = 0; i < interiorWalls; i++) {
-            int x = 1 + random.nextInt(Room.WIDTH - 2);
-            int y = 1 + random.nextInt(Room.HEIGHT - 2);
-            if ((x > Room.WIDTH / 2 - 2 && x < Room.WIDTH / 2 + 2) || (y > Room.HEIGHT / 2 - 2 && y < Room.HEIGHT / 2 + 2)) {
-                continue;
-            }
-            tiles[y][x] = TileType.WALL;
-        }
-
-        int traps = 18 + random.nextInt(16);
-        for (int i = 0; i < traps; i++) {
-            int x = 1 + random.nextInt(Room.WIDTH - 2);
-            int y = 1 + random.nextInt(Room.HEIGHT - 2);
-            if (tiles[y][x] == TileType.FLOOR) {
-                tiles[y][x] = TileType.TRAP;
-            }
-        }
+        addWallPatches(tiles);
+        addTraps(tiles);
 
         Monster monster = null;
         if (!(roomX == 0 && roomY == 0) && random.nextDouble() < 0.7) {
@@ -77,6 +61,67 @@ public class WorldGenerator {
         }
 
         return new Room(roomX, roomY, tiles, monster, chest);
+    }
+
+    private void addWallPatches(TileType[][] tiles) {
+        int clusters = 8 + random.nextInt(5);
+        for (int cluster = 0; cluster < clusters; cluster++) {
+            int x = 2 + random.nextInt(Room.WIDTH - 4);
+            int y = 2 + random.nextInt(Room.HEIGHT - 4);
+            int length = 6 + random.nextInt(12);
+            int direction = random.nextInt(4);
+
+            for (int step = 0; step < length; step++) {
+                if (isSafeForFeature(x, y) && tiles[y][x] == TileType.FLOOR) {
+                    tiles[y][x] = TileType.WALL;
+                    maybeThickenWall(tiles, x, y);
+                }
+
+                if (step % 2 == 0 && random.nextDouble() < 0.45) {
+                    direction = (direction + (random.nextBoolean() ? 1 : 3)) % 4;
+                }
+                switch (direction) {
+                    case 0 -> x++;
+                    case 1 -> y++;
+                    case 2 -> x--;
+                    default -> y--;
+                }
+                x = Math.max(1, Math.min(Room.WIDTH - 2, x));
+                y = Math.max(1, Math.min(Room.HEIGHT - 2, y));
+            }
+        }
+    }
+
+    private void maybeThickenWall(TileType[][] tiles, int x, int y) {
+        if (random.nextDouble() < 0.55 && isSafeForFeature(x + 1, y) && tiles[y][x + 1] == TileType.FLOOR) {
+            tiles[y][x + 1] = TileType.WALL;
+        }
+        if (random.nextDouble() < 0.55 && isSafeForFeature(x - 1, y) && tiles[y][x - 1] == TileType.FLOOR) {
+            tiles[y][x - 1] = TileType.WALL;
+        }
+        if (random.nextDouble() < 0.35 && isSafeForFeature(x, y + 1) && tiles[y + 1][x] == TileType.FLOOR) {
+            tiles[y + 1][x] = TileType.WALL;
+        }
+    }
+
+    private void addTraps(TileType[][] tiles) {
+        int traps = 8 + random.nextInt(7);
+        for (int i = 0; i < traps; i++) {
+            int x = 1 + random.nextInt(Room.WIDTH - 2);
+            int y = 1 + random.nextInt(Room.HEIGHT - 2);
+            if (isSafeForFeature(x, y) && tiles[y][x] == TileType.FLOOR) {
+                tiles[y][x] = TileType.TRAP;
+            }
+        }
+    }
+
+    private boolean isSafeForFeature(int x, int y) {
+        if (x <= 1 || y <= 1 || x >= Room.WIDTH - 2 || y >= Room.HEIGHT - 2) {
+            return false;
+        }
+        int cx = Room.WIDTH / 2;
+        int cy = Room.HEIGHT / 2;
+        return Math.abs(x - cx) > 2 || Math.abs(y - cy) > 2;
     }
 
     private List<Item> generateLoot() {

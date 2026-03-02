@@ -9,14 +9,30 @@ import static org.junit.jupiter.api.Assertions.*;
 class GameModelTest {
 
     @Test
-    void playerUsesBestWeaponForAttack() {
+    void playerUsesSelectedWeaponForAttack() {
         Player player = new Player();
         player.addItems(List.of(
                 new Item("Knife", ItemType.WEAPON, 3),
                 new Item("Sword", ItemType.WEAPON, 6)
         ));
 
+        assertEquals(13, player.attackPower());
+        player.selectNextItem();
         assertEquals(16, player.attackPower());
+    }
+
+    @Test
+    void selectedConsumableCanBeUsed() {
+        Player player = new Player();
+        player.takeDamage(30);
+        player.addItems(List.of(
+                new Item("Sword", ItemType.WEAPON, 6),
+                new Item("Potion", ItemType.CONSUMABLE, 20)
+        ));
+
+        player.selectNextItem();
+        assertTrue(player.useSelectedConsumable());
+        assertEquals(90, player.health());
     }
 
     @Test
@@ -33,7 +49,7 @@ class GameModelTest {
     }
 
     @Test
-    void generatedRoomContainsTraps() {
+    void generatedRoomContainsFewerTrapsThanBefore() {
         WorldGenerator generator = new WorldGenerator(10L);
         Room room = generator.generate(3, 2);
 
@@ -46,7 +62,8 @@ class GameModelTest {
             }
         }
 
-        assertTrue(traps > 0);
+        assertTrue(traps >= 4);
+        assertTrue(traps <= 18);
     }
 
     @Test
@@ -67,5 +84,4 @@ class GameModelTest {
         assertNotNull(chest);
         assertEquals(TileType.FLOOR, roomWithChest.tile(chest.x(), chest.y()));
     }
-
 }
