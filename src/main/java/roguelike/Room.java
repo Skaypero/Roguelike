@@ -1,5 +1,7 @@
 package roguelike;
 
+import java.util.List;
+
 public class Room {
     public static final int WIDTH = 40;
     public static final int HEIGHT = 40;
@@ -7,15 +9,15 @@ public class Room {
     private final int roomX;
     private final int roomY;
     private final TileType[][] tiles;
-    private final Monster monster;
-    private final Chest chest;
+    private final List<MonsterInstance> monsters;
+    private final List<Chest> chests;
 
-    public Room(int roomX, int roomY, TileType[][] tiles, Monster monster, Chest chest) {
+    public Room(int roomX, int roomY, TileType[][] tiles, List<MonsterInstance> monsters, List<Chest> chests) {
         this.roomX = roomX;
         this.roomY = roomY;
         this.tiles = tiles;
-        this.monster = monster;
-        this.chest = chest;
+        this.monsters = monsters;
+        this.chests = chests;
     }
 
     public int roomX() {
@@ -34,12 +36,20 @@ public class Room {
         return tiles;
     }
 
+    public List<MonsterInstance> monsters() {
+        return monsters;
+    }
+
+    public List<Chest> chests() {
+        return chests;
+    }
+
     public Monster monster() {
-        return monster;
+        return monsters.isEmpty() ? null : monsters.get(0).monster();
     }
 
     public Chest chest() {
-        return chest;
+        return chests.isEmpty() ? null : chests.get(0);
     }
 
     public boolean isWalkable(int x, int y) {
